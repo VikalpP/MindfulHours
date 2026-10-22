@@ -101,9 +101,20 @@ struct MenuBarView: View {
             } else {
                 Image(systemName: "moon.zzz").font(.title3).foregroundStyle(.secondary).frame(width: 22, height: 22)
             }
-            VStack(alignment: .leading, spacing: 1) {
-                Text(recorder.currentContext?.appName ?? "Not tracking right now").font(.callout.bold())
-                Text(nowDetail ?? " ").font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            ZStack(alignment: .leading) {
+                appNameAndDetail(name: " ", detail: " ").hidden()
+                appNameAndDetail(name: recorder.currentContext?.appName ?? "Not tracking right now", detail: nowDetail)
+            }
+        }
+    }
+
+    /// Drawn twice: hidden with placeholders to reserve two lines of height, and on top with the real text,
+    /// which the ZStack centers vertically when there's no detail line.
+    private func appNameAndDetail(name: String, detail: String?) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(name).font(.callout.bold())
+            if let detail {
+                Text(detail).font(.caption).foregroundStyle(.secondary).lineLimit(1)
             }
         }
     }
