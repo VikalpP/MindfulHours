@@ -56,8 +56,11 @@ public enum Prompts {
         Reply with ONLY a JSON object, no prose, no code fences:
         {"summary": "...", "task": "...", "project": "..." | null, "category": "..."}
         - summary: at most 18 words, starts with a verb, specific.
-        - task: 2-6 word label for the ongoing piece of work. If the person continues one of the recent tasks, \
-        reuse that label EXACTLY so minutes group together.
+        - task: 2-6 word label for the piece of work this minute serves, judged from THIS minute's evidence. \
+        Recent labels may be wrong; never copy one just because it repeats. Reuse a recent label EXACTLY when this \
+        minute advances that same work, including supporting steps like reading its docs, PRs or tickets. Unrelated \
+        activity (a talk or video on another topic, news, social media, personal chat, shopping) gets its own label, \
+        even right after work.
         - project: repo, client, product or topic the work belongs to, or null if unclear.
         - category: one of \(ActivityCategory.allCases.map(\.rawValue).joined(separator: ", ")).
         """
@@ -76,7 +79,7 @@ public enum Prompts {
         if !observation.recentInsights.isEmpty {
             lines.append("Recent minutes (oldest first):")
             for insight in observation.recentInsights {
-                lines.append("- \(timeFormatter.string(from: insight.minuteStart)) [\(insight.task)] \(insight.summary)")
+                lines.append("- \(timeFormatter.string(from: insight.minuteStart)) \(insight.context.appName) [\(insight.task)] \(insight.summary)")
             }
         }
         if observation.hasScreenshot {

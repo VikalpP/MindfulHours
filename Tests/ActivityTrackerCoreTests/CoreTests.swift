@@ -48,7 +48,7 @@ private func temporaryStore() throws -> ActivityStore {
         let prompt = Prompts.minuteUser(observation)
         #expect(prompt.contains("URL: https://github.com/x/y/pull/12"))
         #expect(prompt.contains("Chrome 50s, Slack 10s"))
-        #expect(prompt.contains("[Review PR #12]"))
+        #expect(prompt.contains("Code [Review PR #12]"))
     }
 }
 
