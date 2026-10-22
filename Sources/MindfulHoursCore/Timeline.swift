@@ -93,17 +93,33 @@ public enum Timeline {
 
 public struct MinuteAccumulator: Sendable {
     public private(set) var secondsByContext: [ActivityContext: TimeInterval] = [:]
+    private var lastRecordedOrder: [ActivityContext: Int] = [:]
+    private var recordCount = 0
 
     public init() {}
 
     public mutating func record(_ context: ActivityContext, seconds: TimeInterval) {
         secondsByContext[context, default: 0] += seconds
+        recordCount += 1
+        lastRecordedOrder[context] = recordCount
     }
 
     public var activeSeconds: TimeInterval { secondsByContext.values.reduce(0, +) }
 
+    /// The app with the most time this minute (ties go to the one used last), then that app's most-used page.
+    /// Choosing the page first would let one stable page beat an app whose title kept changing, like a terminal.
     public var dominantContext: ActivityContext? {
-        secondsByContext.max { $0.value < $1.value }?.key
+        let secondsByApp = Dictionary(grouping: secondsByContext, by: \.key.bundleID)
+            .mapValues { $0.reduce(0) { $0 + $1.value } }
+        let lastUseByApp = Dictionary(grouping: lastRecordedOrder, by: \.key.bundleID)
+            .mapValues { $0.map(\.value).max() ?? 0 }
+        guard let app = secondsByApp.max(by: { ($0.value, lastUseByApp[$0.key] ?? 0) < ($1.value, lastUseByApp[$1.key] ?? 0) })?.key else {
+            return nil
+        }
+        return secondsByContext
+            .filter { $0.key.bundleID == app }
+            .max { ($0.value, lastRecordedOrder[$0.key] ?? 0) < ($1.value, lastRecordedOrder[$1.key] ?? 0) }?
+            .key
     }
 
     public var secondsByApp: [(appName: String, seconds: TimeInterval)] {
@@ -114,6 +130,8 @@ public struct MinuteAccumulator: Sendable {
 
     public mutating func reset() {
         secondsByContext.removeAll()
+        lastRecordedOrder.removeAll()
+        recordCount = 0
     }
 }
 

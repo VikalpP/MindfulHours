@@ -27,7 +27,6 @@ final class ActivityRecorder: ObservableObject {
     @Published private(set) var analysisStatus: AnalysisStatus = .ready
     @Published private(set) var currentContext: ActivityContext?
     @Published private(set) var currentProtection: [ProtectionReason] = []
-    @Published private(set) var latestInsight: Insight?
     @Published private(set) var dataRevision = 0
     /// Vision's text model can take ~30 s to load after a reboot; screenshots wait for it so none skip the scan.
     @Published private(set) var isTextScanReady = false
@@ -58,7 +57,6 @@ final class ActivityRecorder: ObservableObject {
 
     func start() {
         guard loop == nil else { return }
-        Task { latestInsight = try? await store.latestInsights(limit: 1).last }
         Task {
             await WindowCapture.warmUpTextRecognition()
             isTextScanReady = true
@@ -98,7 +96,9 @@ final class ActivityRecorder: ObservableObject {
             trackingStatus = .away
         }
 
-        guard presence.isPresent(idleThreshold: settings.idleThreshold), let front = probe.frontmostApp() else {
+        guard presence.isPresent(idleThreshold: settings.idleThreshold),
+              let front = probe.frontmostApp(),
+              !PresenceMonitor.isLockScreen(front.context.bundleID) else {
             trackingStatus = .away
             endSpan()
             currentContext = nil
@@ -306,7 +306,6 @@ final class ActivityRecorder: ObservableObject {
     private func save(_ insight: Insight) async {
         do {
             try await store.saveInsight(insight)
-            latestInsight = insight
             dataRevision += 1
         } catch {
             NSLog("MindfulHours: failed to save insight: \(error)")

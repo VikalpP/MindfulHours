@@ -30,6 +30,11 @@ final class PresenceMonitor {
         }
     }
 
+    /// Lock-screen notifications don't always arrive (e.g. with a screensaver), but these apps in front mean nobody is working.
+    static func isLockScreen(_ bundleID: String) -> Bool {
+        ["com.apple.loginwindow", "com.apple.ScreenSaver.Engine"].contains(bundleID)
+    }
+
     var secondsSinceLastInput: TimeInterval {
         CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: CGEventType(rawValue: ~0)!)
     }

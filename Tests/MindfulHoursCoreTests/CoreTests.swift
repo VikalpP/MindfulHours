@@ -49,6 +49,7 @@ private func temporaryStore() throws -> ActivityStore {
         #expect(prompt.contains("URL: https://github.com/x/y/pull/12"))
         #expect(prompt.contains("Chrome 50s, Slack 10s"))
         #expect(prompt.contains("Code [Review PR #12]"))
+        #expect(!prompt.contains("Did Review PR #12"))
     }
 }
 
@@ -105,6 +106,27 @@ private func temporaryStore() throws -> ActivityStore {
         let redacted = browser.redacted
         #expect(redacted == ActivityContext(bundleID: "com.google.Chrome", appName: "Chrome"))
         #expect(Insight.fromMetadata(minuteStart: t0, context: redacted, previous: nil).summary == "Chrome")
+    }
+
+    @Test func dominantAppIsChosenByTotalTimeAcrossItsPages() {
+        var minute = MinuteAccumulator()
+        let code = ActivityContext(bundleID: "com.microsoft.VSCode", appName: "Code", windowTitle: "README.md")
+        let terminalTitles = ["node ◂ claude", "zsh", "swift test"]
+        minute.record(code, seconds: 20)
+        for (title, seconds) in zip(terminalTitles, [15.0, 12, 10]) {
+            minute.record(ActivityContext(bundleID: "com.apple.Terminal", appName: "Terminal", windowTitle: title), seconds: seconds)
+        }
+        #expect(minute.dominantContext?.appName == "Terminal")
+        #expect(minute.dominantContext?.windowTitle == "node ◂ claude")
+    }
+
+    @Test func dominantAppTieGoesToMostRecentlyUsed() {
+        var minute = MinuteAccumulator()
+        minute.record(editor, seconds: 30)
+        minute.record(browser, seconds: 30)
+        #expect(minute.dominantContext == browser)
+        minute.record(editor, seconds: 0)
+        #expect(minute.dominantContext == editor)
     }
 
     @Test func metadataInsightContinuesPreviousTaskInSameApp() {

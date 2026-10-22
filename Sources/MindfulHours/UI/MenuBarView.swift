@@ -96,13 +96,6 @@ struct MenuBarView: View {
                     .font(.caption)
                     .foregroundStyle(.green)
             }
-            if let insight = recorder.latestInsight {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(insight.task).font(.caption.bold()).foregroundStyle(insight.category.color)
-                    Text(insight.summary).font(.callout).fixedSize(horizontal: false, vertical: true)
-                    Text("as of \(TimeText.clock(insight.minuteStart))").font(.caption2).foregroundStyle(.tertiary)
-                }
-            }
         }
     }
 
