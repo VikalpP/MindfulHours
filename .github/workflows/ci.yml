@@ -35,7 +35,7 @@ jobs:
         run: scripts/build-app.sh --universal --version "0.0.0-ci" --build-number "${{ github.run_number }}"
 
       - name: Upload app for manual testing
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: MindfulHours-ci-${{ github.run_number }}
           path: build/MindfulHours.app
