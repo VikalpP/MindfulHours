@@ -40,7 +40,7 @@ Requires macOS 14+ and Xcode / Swift 6 toolchain.
 
 ```sh
 scripts/setup-proxy.sh          # brew install cliproxyapi, Claude OAuth login, localhost-only key, writes app settings
-scripts/build-app.sh --install  # build, sign with your Apple Development cert, install to ~/Applications, launch
+scripts/build-app.sh --install  # build, sign with your Apple Development cert, install to /Applications, launch
 ```
 
 Then grant **Accessibility** and **Screen Recording** when prompted (or from the menu-bar popover), and allow Automation for each browser the first time it's in front. Restart the app after granting Screen Recording.

@@ -24,9 +24,9 @@ echo "Built $APP (signed with: $IDENTITY)"
 
 if [[ "${1:-}" == "--install" ]]; then
   pkill -x MindfulHours || true
-  mkdir -p "$HOME/Applications"
   rm -rf "$HOME/Applications/MindfulHours.app"
-  cp -R "$APP" "$HOME/Applications/"
-  open "$HOME/Applications/MindfulHours.app"
-  echo "Installed to ~/Applications/MindfulHours.app"
+  rm -rf "/Applications/MindfulHours.app"
+  cp -R "$APP" /Applications/
+  open /Applications/MindfulHours.app
+  echo "Installed to /Applications/MindfulHours.app"
 fi
