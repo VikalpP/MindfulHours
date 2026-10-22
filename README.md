@@ -18,11 +18,19 @@
 </p>
 
 <p align="center">
+  <a href="#screenshots">Screenshots</a> ·
   <a href="#install">Install</a> ·
   <a href="#how-it-works">How it works</a> ·
   <a href="#privacy">Privacy</a> ·
   <a href="#ai-providers">AI providers</a> ·
   <a href="CONTRIBUTING.md">Contributing</a>
+</p>
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/menu-dark.png">
+    <img src="docs/screenshots/menu-light.png" width="425" alt="MindfulHours menu-bar popup showing the current app and today's recent tasks">
+  </picture>
 </p>
 
 ---
@@ -34,6 +42,31 @@ Ever reach 6 pm and wonder where the day went? MindfulHours sits in your menu ba
 - **Privacy-first**: password fields, password-manager pages, private windows and on-screen secrets are never captured; screenshots never touch disk
 - **Daily summary** and one-click **Markdown export** for standups
 - **Local data**: everything lives in a SQLite file on your Mac
+
+## Screenshots
+
+<table>
+  <tr>
+    <th>Timeline</th>
+    <th>Settings</th>
+  </tr>
+  <tr>
+    <td valign="top">
+      <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/timeline-dark.png">
+    <img src="docs/screenshots/timeline-light.png" width="520" alt="Timeline window with app lanes, task blocks and per-app time">
+  </picture>
+    </td>
+    <td valign="top">
+      <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/settings-dark.png">
+    <img src="docs/screenshots/settings-light.png" width="300" alt="Settings window with AI provider, tracking frequency and privacy rules">
+  </picture>
+    </td>
+  </tr>
+</table>
+
+The Timeline's **app lanes** show how you moved between apps across the day; each task block lists every app used in it. Screenshots follow your GitHub light/dark theme. Regenerate them with `scripts/take-screenshots.sh`.
 
 ## Install
 

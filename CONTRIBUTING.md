@@ -30,13 +30,14 @@ The app works without AI: minutes are then recorded from app, window title and U
 | `Tests/MindfulHoursCoreTests` | Swift Testing suites for the core |
 | `scripts/` | App bundling, release packaging, icon generation, proxy setup |
 
-To capture the whole Settings or Timeline window at full height (e.g. for docs), run (use `--snapshot-timeline` for the Timeline, `--snapshot-menu` for the menu-bar popup):
+To refresh the README screenshots (menu-bar popup, Timeline and Settings, in light and dark), install the app and run:
 
 ```sh
-open -n -W /Applications/MindfulHours.app --args --snapshot-settings ~/Desktop/settings.png --appearance light
+scripts/take-screenshots.sh                       # writes docs/screenshots/
+scripts/take-screenshots.sh ~/Desktop/shots       # or anywhere else
 ```
 
-The result looks like a ⌘⇧4-Space window screenshot: title bar, rounded corners and the system shadow on a transparent background, at Retina resolution. Add `--no-frame` for just the content. Launch it with `open` (not the binary directly) so macOS checks the app's own permissions, and keep your Mac unlocked so the window renders in its active style.
+They look like ⌘⇧4-Space window screenshots: full height, real title bar and shadow, transparent background, Retina resolution. Keep your Mac unlocked while it runs. The images show your real activity, so review them before committing. Each target can also be rendered alone with `open -n -W /Applications/MindfulHours.app --args --snapshot-settings|--snapshot-timeline|--snapshot-menu <file.png> [--appearance light|dark] [--no-frame]`.
 
 The app icon, the README header icon and the GitHub social preview are drawn in code; after changing them run `swift scripts/make-brand-assets.swift` from the repo root.
 
