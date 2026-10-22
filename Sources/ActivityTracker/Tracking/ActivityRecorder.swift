@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 import ActivityTrackerCore
 
@@ -26,6 +27,7 @@ final class ActivityRecorder: ObservableObject {
     @Published private(set) var trackingStatus: TrackingStatus = .away
     @Published private(set) var analysisStatus: AnalysisStatus = .ready
     @Published private(set) var currentContext: ActivityContext?
+    @Published private(set) var currentProtection: [ProtectionReason] = []
     @Published private(set) var latestInsight: Insight?
     @Published private(set) var dataRevision = 0
 
@@ -36,6 +38,8 @@ final class ActivityRecorder: ObservableObject {
     private var minuteStart = Date.now.flooredToMinute
     private var minute = MinuteAccumulator()
     private var snapshotsByBundleID: [String: WindowSnapshot] = [:]
+    private var protectionByContinuityKey: [String: Set<ProtectionReason>] = [:]
+    private var lastLoggedProtection: (bundleID: String, reasons: Set<ProtectionReason>)?
     private var lastSnapshotAt = Date.distantPast
     private var isCapturing = false
 
@@ -64,6 +68,7 @@ final class ActivityRecorder: ObservableObject {
         trackingStatus = .paused(until: duration.map { Date.now.addingTimeInterval($0) })
         endSpan()
         currentContext = nil
+        currentProtection = []
     }
 
     func resume() {
@@ -90,19 +95,41 @@ final class ActivityRecorder: ObservableObject {
             trackingStatus = .away
             endSpan()
             currentContext = nil
+            currentProtection = []
             return
         }
 
-        let isExcluded = settings.excludedBundleIDs.contains(front.context.bundleID)
-        let context = isExcluded ? front.context.redacted : front.context
+        let verdict = settings.privacy.evaluate(front.context, signals: front.signals)
+        let context = verdict.hidesMetadata ? front.context.redacted : front.context
         trackingStatus = .tracking
         currentContext = context
+        currentProtection = verdict.sortedReasons
         minute.record(context, seconds: Self.sampleInterval)
         recordSpan(context, at: now)
+        noteProtection(verdict.reasons, for: context, detail: verdict.matchedRule, at: now)
 
-        let mayCapture = settings.aiEnabled && settings.screenshotsEnabled && !isExcluded
-        if mayCapture, !isCapturing, now.timeIntervalSince(lastSnapshotAt) >= Self.snapshotInterval {
-            captureSnapshot(of: front, at: now)
+        let mayCapture = settings.aiEnabled && settings.screenshotsEnabled && verdict.allowsScreenshot
+        if mayCapture, let windowID = front.windowID, !isCapturing, now.timeIntervalSince(lastSnapshotAt) >= Self.snapshotInterval {
+            captureSnapshot(windowID: windowID, context: context, scanningText: settings.scansScreenshotText, at: now)
+        }
+    }
+
+    private func noteProtection(_ reasons: Set<ProtectionReason>, for context: ActivityContext, detail: String?, at now: Date) {
+        guard !reasons.isEmpty else {
+            if lastLoggedProtection?.bundleID == context.bundleID { lastLoggedProtection = nil }
+            return
+        }
+        protectionByContinuityKey[context.continuityKey, default: []].formUnion(reasons)
+
+        guard lastLoggedProtection?.bundleID != context.bundleID || lastLoggedProtection?.reasons != reasons else { return }
+        lastLoggedProtection = (context.bundleID, reasons)
+        let event = PrivacyEvent(occurredAt: now, bundleID: context.bundleID, appName: context.appName, reasons: reasons.sorted(), detail: detail)
+        Task {
+            do {
+                try await store.logPrivacyEvent(event)
+            } catch {
+                NSLog("ActivityTracker: failed to log privacy event: \(error)")
+            }
         }
     }
 
@@ -120,14 +147,21 @@ final class ActivityRecorder: ObservableObject {
         Task { await store.endPresence() }
     }
 
-    private func captureSnapshot(of front: FrontmostApp, at now: Date) {
+    private func captureSnapshot(windowID: CGWindowID, context: ActivityContext, scanningText: Bool, at now: Date) {
         isCapturing = true
         lastSnapshotAt = now
         Task {
             defer { isCapturing = false }
             do {
-                if let snapshot = try await WindowCapture.captureFrontWindow(of: front.processID) {
-                    snapshotsByBundleID[front.context.bundleID] = snapshot
+                switch try await WindowCapture.capture(windowID: windowID, scanningText: scanningText) {
+                case .captured(let snapshot):
+                    snapshotsByBundleID[context.bundleID] = snapshot
+                case .withheld(let findings):
+                    snapshotsByBundleID[context.bundleID] = nil
+                    let detail = findings.map(\.rawValue).sorted().joined(separator: ", ")
+                    noteProtection([.sensitiveText], for: context, detail: detail, at: now)
+                case .unavailable:
+                    break
                 }
             } catch {
                 NSLog("ActivityTracker: screenshot failed: \(error.localizedDescription)")
@@ -141,17 +175,34 @@ final class ActivityRecorder: ObservableObject {
         let finishedMinute = minuteStart
         let accumulated = minute
         let snapshots = snapshotsByBundleID
+        let protection = protectionByContinuityKey
         minuteStart = currentMinute
         minute.reset()
         snapshotsByBundleID.removeAll()
+        protectionByContinuityKey.removeAll()
 
         guard accumulated.activeSeconds >= Self.minimumActiveSecondsPerMinute, let context = accumulated.dominantContext else { return }
+        let reasons = protection[context.continuityKey] ?? []
+        // Any protection seen during the minute withholds even a screenshot taken before it appeared.
+        let snapshot = reasons.isEmpty ? snapshots[context.bundleID] : nil
         Task {
-            await describe(minute: finishedMinute, context: context, accumulated: accumulated, snapshot: snapshots[context.bundleID], settings: settings)
+            await describe(minute: finishedMinute, context: context, accumulated: accumulated, snapshot: snapshot, protection: reasons, settings: settings)
         }
     }
 
-    private func describe(minute: Date, context: ActivityContext, accumulated: MinuteAccumulator, snapshot: WindowSnapshot?, settings: AppSettings) async {
+    private func describe(
+        minute: Date,
+        context: ActivityContext,
+        accumulated: MinuteAccumulator,
+        snapshot: WindowSnapshot?,
+        protection: Set<ProtectionReason>,
+        settings: AppSettings
+    ) async {
+        if protection.contains(where: \.hidesMetadata) {
+            await save(.privateContent(minuteStart: minute, context: context))
+            return
+        }
+
         let recent = (try? await store.latestInsights(limit: Self.recentInsightCount)) ?? []
 
         if let lastAnalyzed, isUnchanged(context: context, snapshot: snapshot, since: lastAnalyzed) {
@@ -159,7 +210,7 @@ final class ActivityRecorder: ObservableObject {
             return
         }
 
-        let canUseAI = settings.aiEnabled && !settings.excludedBundleIDs.contains(context.bundleID) && !isAnalyzing && Date.now >= retryAfter
+        let canUseAI = settings.aiEnabled && !isAnalyzing && Date.now >= retryAfter
         guard canUseAI, let llm = settings.llm else {
             await save(.fromMetadata(minuteStart: minute, context: context, previous: recent.last))
             return
@@ -169,8 +220,9 @@ final class ActivityRecorder: ObservableObject {
             minuteStart: minute,
             context: context,
             secondsByApp: accumulated.secondsByApp,
-            recentInsights: recent.filter { !$0.isReused && !settings.excludedBundleIDs.contains($0.context.bundleID) },
-            hasScreenshot: snapshot != nil
+            recentInsights: recent.filter { !$0.isReused && $0.task != Insight.privateTask },
+            hasScreenshot: snapshot != nil,
+            screenshotWithheldBecause: protection.sorted()
         )
 
         isAnalyzing = true

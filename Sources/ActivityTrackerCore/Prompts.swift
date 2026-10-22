@@ -6,13 +6,15 @@ public struct MinuteObservation: Sendable {
     public var secondsByApp: [(appName: String, seconds: TimeInterval)]
     public var recentInsights: [Insight]
     public var hasScreenshot: Bool
+    public var screenshotWithheldBecause: [ProtectionReason]
 
-    public init(minuteStart: Date, context: ActivityContext, secondsByApp: [(appName: String, seconds: TimeInterval)], recentInsights: [Insight], hasScreenshot: Bool) {
+    public init(minuteStart: Date, context: ActivityContext, secondsByApp: [(appName: String, seconds: TimeInterval)], recentInsights: [Insight], hasScreenshot: Bool, screenshotWithheldBecause: [ProtectionReason] = []) {
         self.minuteStart = minuteStart
         self.context = context
         self.secondsByApp = secondsByApp
         self.recentInsights = recentInsights
         self.hasScreenshot = hasScreenshot
+        self.screenshotWithheldBecause = screenshotWithheldBecause
     }
 }
 
@@ -77,7 +79,14 @@ public enum Prompts {
                 lines.append("- \(timeFormatter.string(from: insight.minuteStart)) [\(insight.task)] \(insight.summary)")
             }
         }
-        lines.append(observation.hasScreenshot ? "The screenshot of the focused window is attached." : "No screenshot available; infer from metadata only.")
+        if observation.hasScreenshot {
+            lines.append("The screenshot of the focused window is attached.")
+        } else if !observation.screenshotWithheldBecause.isEmpty {
+            let reasons = observation.screenshotWithheldBecause.map(\.label).joined(separator: ", ")
+            lines.append("Screenshot withheld for privacy (\(reasons)); infer from metadata only and do not guess at hidden content.")
+        } else {
+            lines.append("No screenshot available; infer from metadata only.")
+        }
         return lines.joined(separator: "\n")
     }
 

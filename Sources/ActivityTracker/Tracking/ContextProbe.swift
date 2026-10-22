@@ -1,43 +1,49 @@
 import AppKit
 import ApplicationServices
+import Carbon.HIToolbox
 import ActivityTrackerCore
 
 struct FrontmostApp {
     let processID: pid_t
+    let windowID: CGWindowID?
     let context: ActivityContext
+    let signals: PrivacySignals
 }
 
 @MainActor
 final class ContextProbe {
-    private let browserURLReader = BrowserURLReader()
+    private static let safariBundleIDs: Set<String> = ["com.apple.Safari", "com.apple.SafariTechnologyPreview"]
+    private let browser = BrowserTabReader()
 
     func frontmostApp() -> FrontmostApp? {
         guard let app = NSWorkspace.shared.frontmostApplication else { return nil }
         let bundleID = app.bundleIdentifier ?? "pid.\(app.processIdentifier)"
-        let window = focusedWindow(of: app.processIdentifier)
+        let application = AXUIElement.application(app.processIdentifier)
+        let window = application.element(kAXFocusedWindowAttribute)
+        let frontWindow = FrontWindow.lookup(processID: app.processIdentifier)
+        let tab = browser.activeTab(bundleID: bundleID)
+
         let context = ActivityContext(
             bundleID: bundleID,
             appName: app.localizedName ?? bundleID,
-            windowTitle: window.flatMap { stringAttribute(kAXTitleAttribute, of: $0) }.flatMap(nonEmpty),
-            documentPath: window.flatMap { stringAttribute(kAXDocumentAttribute, of: $0) }.flatMap(Self.filePath(fromDocument:)),
-            url: browserURLReader.activeTabURL(bundleID: bundleID)
+            windowTitle: window?.title.flatMap(nonEmpty),
+            documentPath: window?.string(kAXDocumentAttribute).flatMap(Self.filePath(fromDocument:)),
+            url: tab?.url
         )
-        return FrontmostApp(processID: app.processIdentifier, context: context)
+        let signals = PrivacySignals(
+            isSecureInputActive: IsSecureEventInputEnabled(),
+            isFocusedElementSecure: application.element(kAXFocusedUIElementAttribute)?.string(kAXSubroleAttribute) == kAXSecureTextFieldSubrole,
+            isWindowCaptureBlocked: frontWindow?.blocksCapture ?? false,
+            isPrivateWindow: (tab?.isPrivate ?? false) || (Self.safariBundleIDs.contains(bundleID) && isSafariWindowPrivate(application))
+        )
+        return FrontmostApp(processID: app.processIdentifier, windowID: frontWindow?.id, context: context, signals: signals)
     }
 
-    private func focusedWindow(of processID: pid_t) -> AXUIElement? {
-        let application = AXUIElementCreateApplication(processID)
-        AXUIElementSetMessagingTimeout(application, 0.5)
-        var value: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(application, kAXFocusedWindowAttribute as CFString, &value) == .success,
-              let value, CFGetTypeID(value) == AXUIElementGetTypeID() else { return nil }
-        return (value as! AXUIElement)
-    }
-
-    private func stringAttribute(_ attribute: String, of element: AXUIElement) -> String? {
-        var value: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(element, attribute as CFString, &value) == .success else { return nil }
-        return value as? String
+    /// Safari exposes no scripting property for this; its Window menu offers "Move Tab to New Private Window" only in private windows.
+    private func isSafariWindowPrivate(_ application: AXUIElement) -> Bool {
+        guard let menuBar = application.element(kAXMenuBarAttribute),
+              let windowMenu = menuBar.children.first(where: { $0.title == "Window" })?.children.first else { return false }
+        return windowMenu.children.contains { $0.title == "Move Tab to New Private Window" }
     }
 
     private func nonEmpty(_ string: String) -> String? {
@@ -48,5 +54,25 @@ final class ContextProbe {
     private static func filePath(fromDocument document: String) -> String? {
         guard let url = URL(string: document), url.isFileURL else { return nil }
         return url.path
+    }
+}
+
+struct FrontWindow {
+    let id: CGWindowID
+    let blocksCapture: Bool
+
+    /// CGWindowList is ordered front-to-back, which ScreenCaptureKit's window list does not guarantee.
+    static func lookup(processID: pid_t) -> FrontWindow? {
+        guard let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] else {
+            return nil
+        }
+        let info = windows.first { info in
+            (info[kCGWindowOwnerPID as String] as? pid_t) == processID
+                && (info[kCGWindowLayer as String] as? Int) == 0
+                && ((info[kCGWindowBounds as String] as? [String: CGFloat])?["Height"] ?? 0) > 80
+        }
+        guard let info, let id = info[kCGWindowNumber as String] as? CGWindowID else { return nil }
+        let sharingState = info[kCGWindowSharingState as String] as? Int
+        return FrontWindow(id: id, blocksCapture: sharingState == Int(CGWindowSharingType.none.rawValue))
     }
 }

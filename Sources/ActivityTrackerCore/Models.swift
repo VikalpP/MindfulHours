@@ -111,6 +111,22 @@ extension Insight {
         )
     }
 
+    public static let privateTask = "Private"
+
+    /// For minutes whose title or URL is itself sensitive: only the app name survives.
+    public static func privateContent(minuteStart: Date, context: ActivityContext) -> Insight {
+        Insight(
+            minuteStart: minuteStart,
+            context: context.redacted,
+            summary: "\(context.appName) — private content hidden",
+            task: privateTask,
+            project: nil,
+            category: .other,
+            isReused: false,
+            model: metadataModel
+        )
+    }
+
     public func reused(for minuteStart: Date) -> Insight {
         var copy = self
         copy.id = 0

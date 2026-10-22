@@ -86,6 +86,11 @@ struct MenuBarView: View {
                     }
                 }
             }
+            if !recorder.currentProtection.isEmpty {
+                Label("Not captured: \(recorder.currentProtection.map(\.label).joined(separator: ", "))", systemImage: "lock.shield")
+                    .font(.caption)
+                    .foregroundStyle(.green)
+            }
             if let insight = recorder.latestInsight {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(insight.task).font(.caption.bold()).foregroundStyle(insight.category.color)

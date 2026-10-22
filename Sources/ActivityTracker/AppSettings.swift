@@ -9,6 +9,10 @@ enum SettingsKey {
     static let model = "model"
     static let idleThresholdSeconds = "idleThresholdSeconds"
     static let excludedBundleIDs = "excludedBundleIDs"
+    static let blockedURLPatterns = "blockedURLPatterns"
+    static let sensitiveTitleKeywords = "sensitiveTitleKeywords"
+    static let protectsPrivateWindows = "protectsPrivateWindows"
+    static let scansScreenshotText = "scansScreenshotText"
 }
 
 enum SettingsDefault {
@@ -24,6 +28,10 @@ enum SettingsDefault {
         com.apple.Passwords
         com.bitwarden.desktop
         """
+    static let blockedURLPatterns = PrivacyRules.defaultBlockedURLPatterns
+    static let sensitiveTitleKeywords = PrivacyRules.defaultSensitiveTitleKeywords
+    static let protectsPrivateWindows = true
+    static let scansScreenshotText = true
 }
 
 struct AppSettings: Sendable {
@@ -31,7 +39,8 @@ struct AppSettings: Sendable {
     var screenshotsEnabled: Bool
     var llm: LLMConfiguration?
     var idleThreshold: TimeInterval
-    var excludedBundleIDs: Set<String>
+    var privacy: PrivacyRules
+    var scansScreenshotText: Bool
 
     static func registerDefaults(in defaults: UserDefaults = .standard) {
         defaults.register(defaults: [
@@ -41,6 +50,10 @@ struct AppSettings: Sendable {
             SettingsKey.model: SettingsDefault.model,
             SettingsKey.idleThresholdSeconds: SettingsDefault.idleThresholdSeconds,
             SettingsKey.excludedBundleIDs: SettingsDefault.excludedBundleIDs,
+            SettingsKey.blockedURLPatterns: SettingsDefault.blockedURLPatterns,
+            SettingsKey.sensitiveTitleKeywords: SettingsDefault.sensitiveTitleKeywords,
+            SettingsKey.protectsPrivateWindows: SettingsDefault.protectsPrivateWindows,
+            SettingsKey.scansScreenshotText: SettingsDefault.scansScreenshotText,
         ])
     }
 
@@ -56,12 +69,13 @@ struct AppSettings: Sendable {
             screenshotsEnabled: defaults.bool(forKey: SettingsKey.screenshotsEnabled),
             llm: llm,
             idleThreshold: defaults.double(forKey: SettingsKey.idleThresholdSeconds),
-            excludedBundleIDs: Set(
-                (defaults.string(forKey: SettingsKey.excludedBundleIDs) ?? "")
-                    .split(whereSeparator: \.isNewline)
-                    .map { $0.trimmingCharacters(in: .whitespaces) }
-                    .filter { !$0.isEmpty }
-            )
+            privacy: PrivacyRules(
+                excludedBundleIDs: Set(PrivacyRules.lines(defaults.string(forKey: SettingsKey.excludedBundleIDs) ?? "")),
+                blockedURLPatterns: PrivacyRules.lines(defaults.string(forKey: SettingsKey.blockedURLPatterns) ?? ""),
+                sensitiveTitleKeywords: PrivacyRules.lines(defaults.string(forKey: SettingsKey.sensitiveTitleKeywords) ?? ""),
+                protectsPrivateWindows: defaults.bool(forKey: SettingsKey.protectsPrivateWindows)
+            ),
+            scansScreenshotText: defaults.bool(forKey: SettingsKey.scansScreenshotText)
         )
     }
 }

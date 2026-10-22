@@ -16,7 +16,28 @@ public actor ActivityStore {
     }
 
     private static func migrate(_ database: SQLiteDatabase) throws {
-        guard database.userVersion < 1 else { return }
+        if database.userVersion < 1 { try createInitialSchema(database) }
+        if database.userVersion < 2 { try addPrivacyEvents(database) }
+    }
+
+    private static func addPrivacyEvents(_ database: SQLiteDatabase) throws {
+        try database.transaction {
+            try database.execute("""
+                CREATE TABLE privacy_events (
+                    id INTEGER PRIMARY KEY,
+                    occurred_at REAL NOT NULL,
+                    bundle_id TEXT NOT NULL,
+                    app_name TEXT NOT NULL,
+                    reasons TEXT NOT NULL,
+                    detail TEXT
+                )
+                """)
+            try database.execute("CREATE INDEX privacy_events_occurred_at ON privacy_events(occurred_at)")
+            try database.setUserVersion(2)
+        }
+    }
+
+    private static func createInitialSchema(_ database: SQLiteDatabase) throws {
         try database.transaction {
             try database.execute("""
                 CREATE TABLE spans (
@@ -155,9 +176,41 @@ public actor ActivityStore {
         )
     }
 
+    // MARK: Privacy events
+
+    public func logPrivacyEvent(_ event: PrivacyEvent) throws {
+        try database.execute(
+            "INSERT INTO privacy_events (occurred_at, bundle_id, app_name, reasons, detail) VALUES (?, ?, ?, ?, ?)",
+            [
+                .real(event.occurredAt.timeIntervalSince1970),
+                .text(event.bundleID),
+                .text(event.appName),
+                .text(event.reasons.map(\.rawValue).joined(separator: ",")),
+                .optionalText(event.detail),
+            ]
+        )
+    }
+
+    public func latestPrivacyEvents(limit: Int) throws -> [PrivacyEvent] {
+        try database.query(
+            "SELECT id, occurred_at, bundle_id, app_name, reasons, detail FROM privacy_events ORDER BY occurred_at DESC LIMIT ?",
+            [.integer(Int64(limit))]
+        ) { row in
+            PrivacyEvent(
+                id: row.int(0),
+                occurredAt: row.date(1),
+                bundleID: row.text(2) ?? "",
+                appName: row.text(3) ?? "",
+                reasons: (row.text(4) ?? "").split(separator: ",").compactMap { ProtectionReason(rawValue: String($0)) },
+                detail: row.text(5)
+            )
+        }
+    }
+
     public func deleteAll() throws {
         openSpan = nil
         try database.transaction {
+            try database.execute("DELETE FROM privacy_events")
             try database.execute("DELETE FROM spans")
             try database.execute("DELETE FROM insights")
             try database.execute("DELETE FROM day_summaries")

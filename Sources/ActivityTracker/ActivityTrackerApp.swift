@@ -25,10 +25,9 @@ struct ActivityTrackerApp: App {
 
         Window("Activity Tracker Settings", id: WindowID.settings) {
             SettingsView(model: model)
-                .frame(width: 560)
-                .fixedSize(horizontal: false, vertical: true)
+                .frame(minWidth: 560, minHeight: 520)
         }
-        .windowResizability(.contentSize)
+        .defaultSize(width: 600, height: 780)
     }
 }
 
@@ -37,7 +36,7 @@ struct MenuBarLabel: View {
 
     var body: some View {
         switch recorder.trackingStatus {
-        case .tracking: Image(systemName: "record.circle")
+        case .tracking: Image(systemName: recorder.currentProtection.isEmpty ? "record.circle" : "lock.shield")
         case .away: Image(systemName: "moon.zzz")
         case .paused: Image(systemName: "pause.circle")
         }

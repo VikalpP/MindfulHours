@@ -10,11 +10,16 @@ struct SettingsView: View {
     @AppStorage(SettingsKey.model) private var modelName = SettingsDefault.model
     @AppStorage(SettingsKey.idleThresholdSeconds) private var idleThresholdSeconds = SettingsDefault.idleThresholdSeconds
     @AppStorage(SettingsKey.excludedBundleIDs) private var excludedBundleIDs = SettingsDefault.excludedBundleIDs
+    @AppStorage(SettingsKey.blockedURLPatterns) private var blockedURLPatterns = SettingsDefault.blockedURLPatterns
+    @AppStorage(SettingsKey.sensitiveTitleKeywords) private var sensitiveTitleKeywords = SettingsDefault.sensitiveTitleKeywords
+    @AppStorage(SettingsKey.protectsPrivateWindows) private var protectsPrivateWindows = SettingsDefault.protectsPrivateWindows
+    @AppStorage(SettingsKey.scansScreenshotText) private var scansScreenshotText = SettingsDefault.scansScreenshotText
 
     @State private var availableModels: [String] = []
     @State private var connectionResult: Result<String, Error>?
     @State private var isTesting = false
     @State private var isConfirmingDelete = false
+    @State private var privacyEvents: [PrivacyEvent] = []
 
     var body: some View {
         Form {
@@ -55,11 +60,39 @@ struct SettingsView: View {
                     Text("Away after \(Int(idleThresholdSeconds / 60)) min without input")
                 }
                 Toggle("Launch at login", isOn: Binding(get: { model.launchesAtLogin }, set: { model.launchesAtLogin = $0 }))
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Never analyze these apps (bundle IDs, one per line)")
-                    TextEditor(text: $excludedBundleIDs)
-                        .font(.system(.callout, design: .monospaced))
-                        .frame(height: 90)
+            }
+
+            Section {
+                Toggle("Treat private/incognito browser windows as protected", isOn: $protectsPrivateWindows)
+                Toggle("Scan screenshots on-device for card numbers, keys and codes", isOn: $scansScreenshotText)
+                ruleEditor("Never analyze these apps (bundle IDs)", text: $excludedBundleIDs)
+                ruleEditor("Sensitive addresses (URL prefixes like chrome://password-manager, or domains like bank.com)", text: $blockedURLPatterns)
+                ruleEditor("Sensitive window-title words (whole-word match)", text: $sensitiveTitleKeywords)
+            } header: {
+                Text("Privacy")
+            } footer: {
+                Text("Screenshots are always skipped while a password field is focused or the window blocks capture. Matching an app, address or title word also hides the title and URL; other protections keep them and only skip the screenshot.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+
+            Section("Skipped screenshots") {
+                if privacyEvents.isEmpty {
+                    Text("Nothing skipped yet.").foregroundStyle(.secondary)
+                }
+                ForEach(privacyEvents) { event in
+                    HStack(alignment: .firstTextBaseline) {
+                        AppIconView(bundleID: event.bundleID, size: 14)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text("\(event.appName): \(event.reasons.map(\.label).joined(separator: ", "))")
+                            if let detail = event.detail {
+                                Text(detail).font(.caption).foregroundStyle(.secondary)
+                            }
+                        }
+                        Spacer()
+                        Text(event.occurredAt.formatted(date: .abbreviated, time: .shortened))
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                    .font(.callout)
                 }
             }
 
@@ -80,12 +113,22 @@ struct SettingsView: View {
         }
         .formStyle(.grouped)
         .onAppear { model.refreshPermissions() }
+        .task { privacyEvents = (try? await model.store.latestPrivacyEvents(limit: 15)) ?? [] }
         .confirmationDialog("Delete all recorded activity?", isPresented: $isConfirmingDelete) {
             Button("Delete Everything", role: .destructive) {
                 Task { try? await model.store.deleteAll() }
             }
         } message: {
-            Text("This permanently removes every span, minute insight and day summary.")
+            Text("This permanently removes every span, minute insight, day summary and privacy log entry.")
+        }
+    }
+
+    private func ruleEditor(_ title: String, text: Binding<String>) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+            TextEditor(text: text)
+                .font(.system(.callout, design: .monospaced))
+                .frame(height: 80)
         }
     }
 
