@@ -13,6 +13,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let request = SnapshotRequest(arguments: CommandLine.arguments) {
             Task {
                 do {
+                    await model.recorder.prepareForSnapshot()
                     try await AppWindowSnapshot.render(model: model, request: request)
                     print("Wrote \(request.outputPath)")
                 } catch {

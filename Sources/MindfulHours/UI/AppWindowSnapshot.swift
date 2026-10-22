@@ -24,6 +24,9 @@ struct SnapshotRequest {
             case .menu: 388
             }
         }
+
+        /// The menu-bar popup has no title bar: just a rounded, translucent panel with a shadow.
+        var isPopup: Bool { self == .menu }
     }
 
     let target: Target
@@ -74,17 +77,26 @@ enum AppWindowSnapshot {
         }
         let window = UnconstrainedWindow(
             contentRect: NSRect(x: 0, y: 0, width: request.target.width, height: 2_000),
-            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            styleMask: request.target.isPopup ? [.borderless] : [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered, defer: false
         )
-        window.contentViewController = controller
+        if request.target.isPopup {
+            window.contentView = popupPanel(containing: controller.view)
+            window.isOpaque = false
+            window.backgroundColor = .clear
+            window.hasShadow = true
+        } else {
+            window.contentViewController = controller
+        }
         window.title = request.target.title
         window.isReleasedWhenClosed = false
         window.appearance = request.appearance.flatMap(NSAppearance.init(named:))
         window.setContentSize(NSSize(width: request.target.width, height: 2_000))
         let hosting = controller.view
         pinToScreenEdge(window)
-        NSApp.activate()
+        // Controls only draw in their active (accent-colored) style while the app is active; a snapshot runs while
+        // you're in another app, so plain cooperative activation would be declined.
+        NSApp.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
         defer { window.close() }
         await settle(for: 1.0)
@@ -100,11 +112,26 @@ enum AppWindowSnapshot {
             await settle(for: 0.5)
         }
 
+        window.makeFirstResponder(nil)
+        await settle(for: 0.2)
         let image = try await withRetries { try await capture(window, includingFrame: request.includesWindowFrame) }
         guard let png = NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:]) else {
             throw SnapshotError.encodingFailed
         }
         try png.write(to: URL(fileURLWithPath: request.outputPath))
+    }
+
+    /// A solid stand-in for the popover material, which would blur the desktop behind it but has nothing to blur off-screen.
+    private static func popupPanel(containing content: NSView) -> NSView {
+        let panel = PopupPanelView()
+        panel.wantsLayer = true
+        panel.layer?.cornerRadius = 12
+        panel.layer?.masksToBounds = true
+        panel.layer?.borderWidth = 1
+        content.frame = panel.bounds
+        content.autoresizingMask = [.width, .height]
+        panel.addSubview(content)
+        return panel
     }
 
     /// ScreenCaptureKit only captures windows that touch a display, so leave a 1-point sliver at the right edge;
@@ -184,6 +211,16 @@ enum AppWindowSnapshot {
 
     private static func settle(for seconds: TimeInterval) async {
         try? await Task.sleep(for: .seconds(seconds))
+    }
+}
+
+private final class PopupPanelView: NSView {
+    override var wantsUpdateLayer: Bool { true }
+
+    override func updateLayer() {
+        let isDark = effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+        layer?.backgroundColor = (isDark ? NSColor(white: 0.17, alpha: 1) : NSColor(white: 0.94, alpha: 1)).cgColor
+        layer?.borderColor = (isDark ? NSColor(white: 1, alpha: 0.12) : NSColor(white: 0, alpha: 0.1)).cgColor
     }
 }
 

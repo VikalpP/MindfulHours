@@ -69,6 +69,19 @@ final class ActivityRecorder: ObservableObject {
         }
     }
 
+    /// Fills in the current app and a ready text scan without recording anything, so window snapshots show a live popup.
+    func prepareForSnapshot() async {
+        await WindowCapture.warmUpTextRecognition()
+        isTextScanReady = true
+        let settings = AppSettings.load()
+        analysisStatus = settings.aiEnabled && settings.llm != nil ? .ready : .disabled
+        guard let front = probe.frontmostApp(), !PresenceMonitor.isLockScreen(front.context.bundleID) else { return }
+        let verdict = settings.privacy.evaluate(front.context, signals: front.signals)
+        trackingStatus = .tracking
+        currentContext = verdict.hidesMetadata ? front.context.redacted : front.context
+        currentProtection = verdict.sortedReasons
+    }
+
     func pause(for duration: TimeInterval?) {
         trackingStatus = .paused(until: duration.map { Date.now.addingTimeInterval($0) })
         endSpan()
