@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security or privacy vulnerability
+    url: https://github.com/VikalpP/MindfulHours/security/advisories/new
+    about: Please report vulnerabilities privately, not as public issues.
+  - name: Questions & ideas
+    url: https://github.com/VikalpP/MindfulHours/discussions
+    about: Ask questions and share ideas in Discussions.

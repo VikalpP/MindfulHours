@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: Build & test
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Toolchain
+        run: |
+          xcodebuild -version
+          swift --version
+
+      - name: Build
+        run: swift build
+
+      - name: Test
+        run: swift test
+
+      - name: Build app bundle
+        run: scripts/build-app.sh --universal --version "0.0.0-ci" --build-number "${{ github.run_number }}"
+
+      - name: Upload app for manual testing
+        uses: actions/upload-artifact@v4
+        with:
+          name: MindfulHours-ci-${{ github.run_number }}
+          path: build/MindfulHours.app
+          retention-days: 7
