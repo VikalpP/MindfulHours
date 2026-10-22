@@ -15,6 +15,11 @@ public struct ActivityContext: Hashable, Sendable {
         self.url = url
     }
 
+    /// Keeps only the app identity so excluded apps never leak titles, URLs or paths into storage or prompts.
+    public var redacted: ActivityContext {
+        ActivityContext(bundleID: bundleID, appName: appName)
+    }
+
     public var continuityKey: String {
         [bundleID, windowTitle ?? "", url ?? "", documentPath ?? ""].joined(separator: "\u{1F}")
     }

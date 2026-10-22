@@ -93,12 +93,14 @@ final class ActivityRecorder: ObservableObject {
             return
         }
 
+        let isExcluded = settings.excludedBundleIDs.contains(front.context.bundleID)
+        let context = isExcluded ? front.context.redacted : front.context
         trackingStatus = .tracking
-        currentContext = front.context
-        minute.record(front.context, seconds: Self.sampleInterval)
-        recordSpan(front.context, at: now)
+        currentContext = context
+        minute.record(context, seconds: Self.sampleInterval)
+        recordSpan(context, at: now)
 
-        let mayCapture = settings.aiEnabled && settings.screenshotsEnabled && !settings.excludedBundleIDs.contains(front.context.bundleID)
+        let mayCapture = settings.aiEnabled && settings.screenshotsEnabled && !isExcluded
         if mayCapture, !isCapturing, now.timeIntervalSince(lastSnapshotAt) >= Self.snapshotInterval {
             captureSnapshot(of: front, at: now)
         }
@@ -167,7 +169,7 @@ final class ActivityRecorder: ObservableObject {
             minuteStart: minute,
             context: context,
             secondsByApp: accumulated.secondsByApp,
-            recentInsights: recent.filter { !$0.isReused },
+            recentInsights: recent.filter { !$0.isReused && !settings.excludedBundleIDs.contains($0.context.bundleID) },
             hasScreenshot: snapshot != nil
         )
 

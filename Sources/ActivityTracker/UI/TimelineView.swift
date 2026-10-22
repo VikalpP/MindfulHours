@@ -63,7 +63,7 @@ struct TimelineView: View {
             Label(summaryError, systemImage: "exclamationmark.triangle").foregroundStyle(.red).textSelection(.enabled)
         } else if let summary = activity.summary {
             VStack(alignment: .leading, spacing: 8) {
-                Text((try? AttributedString(markdown: summary.text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(summary.text))
+                Text(Self.renderedWithoutLinks(summary.text))
                     .textSelection(.enabled)
                 Text("Generated \(summary.createdAt.formatted(date: .omitted, time: .shortened))").font(.caption).foregroundStyle(.tertiary)
             }
@@ -107,6 +107,17 @@ struct TimelineView: View {
             .padding(20)
         }
         .frame(width: 280)
+    }
+
+    /// Model output can echo window titles or page text, so links in it are never made clickable.
+    private static func renderedWithoutLinks(_ markdown: String) -> AttributedString {
+        guard var rendered = try? AttributedString(markdown: markdown, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)) else {
+            return AttributedString(markdown)
+        }
+        for run in rendered.runs where run.link != nil {
+            rendered[run.range].link = nil
+        }
+        return rendered
     }
 
     private func shiftDay(by days: Int) {

@@ -101,6 +101,12 @@ private func temporaryStore() throws -> ActivityStore {
         #expect(minute.activeSeconds == 60)
     }
 
+    @Test func redactedContextDropsTitleURLAndPath() {
+        let redacted = browser.redacted
+        #expect(redacted == ActivityContext(bundleID: "com.google.Chrome", appName: "Chrome"))
+        #expect(Insight.fromMetadata(minuteStart: t0, context: redacted, previous: nil).summary == "Chrome")
+    }
+
     @Test func metadataInsightContinuesPreviousTaskInSameApp() {
         let previous = insight(0, task: "Build tracker")
         let fallback = Insight.fromMetadata(minuteStart: t0.addingTimeInterval(60), context: editor, previous: previous)
