@@ -23,6 +23,7 @@ final class ActivityRecorder: ObservableObject {
     private static let similarScreenMaxDistance = 5
     private static let maxInsightReuseAge: TimeInterval = 10 * 60
     private static let recentInsightCount = 6
+    private static let repeatedPrivacyEventInterval: TimeInterval = 5 * 60
 
     @Published private(set) var trackingStatus: TrackingStatus = .away
     @Published private(set) var analysisStatus: AnalysisStatus = .ready
@@ -39,7 +40,9 @@ final class ActivityRecorder: ObservableObject {
     private var minute = MinuteAccumulator()
     private var snapshotsByBundleID: [String: WindowSnapshot] = [:]
     private var protectionByContinuityKey: [String: Set<ProtectionReason>] = [:]
-    private var lastLoggedProtection: (bundleID: String, reasons: Set<ProtectionReason>)?
+    /// Screenshots are keyed by app, so withholding must be too: any protection in an app this minute blocks its screenshot.
+    private var protectionByBundleID: [String: Set<ProtectionReason>] = [:]
+    private var lastLoggedProtection: (bundleID: String, reasons: Set<ProtectionReason>, at: Date)?
     private var lastSnapshotAt = Date.distantPast
     private var isCapturing = false
 
@@ -110,19 +113,20 @@ final class ActivityRecorder: ObservableObject {
 
         let mayCapture = settings.aiEnabled && settings.screenshotsEnabled && verdict.allowsScreenshot
         if mayCapture, let windowID = front.windowID, !isCapturing, now.timeIntervalSince(lastSnapshotAt) >= Self.snapshotInterval {
-            captureSnapshot(windowID: windowID, context: context, scanningText: settings.scansScreenshotText, at: now)
+            captureSnapshot(windowID: windowID, context: context, settings: settings, at: now)
         }
     }
 
     private func noteProtection(_ reasons: Set<ProtectionReason>, for context: ActivityContext, detail: String?, at now: Date) {
-        guard !reasons.isEmpty else {
-            if lastLoggedProtection?.bundleID == context.bundleID { lastLoggedProtection = nil }
+        guard !reasons.isEmpty else { return }
+        protectionByContinuityKey[context.continuityKey, default: []].formUnion(reasons)
+        protectionByBundleID[context.bundleID, default: []].formUnion(reasons)
+
+        if let last = lastLoggedProtection, last.bundleID == context.bundleID, last.reasons == reasons,
+           now.timeIntervalSince(last.at) < Self.repeatedPrivacyEventInterval {
             return
         }
-        protectionByContinuityKey[context.continuityKey, default: []].formUnion(reasons)
-
-        guard lastLoggedProtection?.bundleID != context.bundleID || lastLoggedProtection?.reasons != reasons else { return }
-        lastLoggedProtection = (context.bundleID, reasons)
+        lastLoggedProtection = (context.bundleID, reasons, now)
         let event = PrivacyEvent(occurredAt: now, bundleID: context.bundleID, appName: context.appName, reasons: reasons.sorted(), detail: detail)
         Task {
             do {
@@ -147,14 +151,16 @@ final class ActivityRecorder: ObservableObject {
         Task { await store.endPresence() }
     }
 
-    private func captureSnapshot(windowID: CGWindowID, context: ActivityContext, scanningText: Bool, at now: Date) {
+    private func captureSnapshot(windowID: CGWindowID, context: ActivityContext, settings: AppSettings, at now: Date) {
         isCapturing = true
         lastSnapshotAt = now
+        let captureMinute = minuteStart
         Task {
             defer { isCapturing = false }
             do {
-                switch try await WindowCapture.capture(windowID: windowID, scanningText: scanningText) {
+                switch try await WindowCapture.capture(windowID: windowID, scanningText: settings.scansScreenshotText) {
                 case .captured(let snapshot):
+                    guard minuteStart == captureMinute, isStillClear(windowID: windowID, bundleID: context.bundleID, settings: settings) else { return }
                     snapshotsByBundleID[context.bundleID] = snapshot
                 case .withheld(let findings):
                     snapshotsByBundleID[context.bundleID] = nil
@@ -169,24 +175,38 @@ final class ActivityRecorder: ObservableObject {
         }
     }
 
+    /// The window may have changed (tab switch, password field focus) while the capture and text scan ran.
+    private func isStillClear(windowID: CGWindowID, bundleID: String, settings: AppSettings) -> Bool {
+        guard let front = probe.frontmostApp(), front.windowID == windowID, front.context.bundleID == bundleID else { return false }
+        let verdict = settings.privacy.evaluate(front.context, signals: front.signals)
+        noteProtection(verdict.reasons, for: verdict.hidesMetadata ? front.context.redacted : front.context, detail: verdict.matchedRule, at: .now)
+        return verdict.allowsScreenshot
+    }
+
     private func rollMinute(at now: Date, settings: AppSettings) {
         let currentMinute = now.flooredToMinute
         guard currentMinute > minuteStart else { return }
         let finishedMinute = minuteStart
         let accumulated = minute
         let snapshots = snapshotsByBundleID
-        let protection = protectionByContinuityKey
+        let protectionByKey = protectionByContinuityKey
+        let protectionByApp = protectionByBundleID
         minuteStart = currentMinute
         minute.reset()
         snapshotsByBundleID.removeAll()
         protectionByContinuityKey.removeAll()
+        protectionByBundleID.removeAll()
 
         guard accumulated.activeSeconds >= Self.minimumActiveSecondsPerMinute, let context = accumulated.dominantContext else { return }
-        let reasons = protection[context.continuityKey] ?? []
-        // Any protection seen during the minute withholds even a screenshot taken before it appeared.
-        let snapshot = reasons.isEmpty ? snapshots[context.bundleID] : nil
+        let hidesContext = protectionByKey[context.continuityKey]?.contains(where: \.hidesMetadata) ?? false
+        let appProtection = protectionByApp[context.bundleID] ?? []
+        // Any protection seen in this app during the minute withholds even a screenshot taken before it appeared.
+        let snapshot = appProtection.isEmpty ? snapshots[context.bundleID] : nil
         Task {
-            await describe(minute: finishedMinute, context: context, accumulated: accumulated, snapshot: snapshot, protection: reasons, settings: settings)
+            await describe(
+                minute: finishedMinute, context: context, accumulated: accumulated, snapshot: snapshot,
+                hidesContext: hidesContext, withheldBecause: appProtection.filter { !$0.hidesMetadata }, settings: settings
+            )
         }
     }
 
@@ -195,10 +215,11 @@ final class ActivityRecorder: ObservableObject {
         context: ActivityContext,
         accumulated: MinuteAccumulator,
         snapshot: WindowSnapshot?,
-        protection: Set<ProtectionReason>,
+        hidesContext: Bool,
+        withheldBecause: Set<ProtectionReason>,
         settings: AppSettings
     ) async {
-        if protection.contains(where: \.hidesMetadata) {
+        if hidesContext {
             await save(.privateContent(minuteStart: minute, context: context))
             return
         }
@@ -222,7 +243,7 @@ final class ActivityRecorder: ObservableObject {
             secondsByApp: accumulated.secondsByApp,
             recentInsights: recent.filter { !$0.isReused && $0.task != Insight.privateTask },
             hasScreenshot: snapshot != nil,
-            screenshotWithheldBecause: protection.sorted()
+            screenshotWithheldBecause: snapshot == nil ? withheldBecause.sorted() : []
         )
 
         isAnalyzing = true

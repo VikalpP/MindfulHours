@@ -12,7 +12,6 @@ struct FrontmostApp {
 
 @MainActor
 final class ContextProbe {
-    private static let safariBundleIDs: Set<String> = ["com.apple.Safari", "com.apple.SafariTechnologyPreview"]
     private let browser = BrowserTabReader()
 
     func frontmostApp() -> FrontmostApp? {
@@ -22,6 +21,7 @@ final class ContextProbe {
         let window = application.element(kAXFocusedWindowAttribute)
         let frontWindow = FrontWindow.lookup(processID: app.processIdentifier)
         let tab = browser.activeTab(bundleID: bundleID)
+        let windowPrivacy = BrowserTabReader.isSafari(bundleID) ? safariWindowPrivacy(application) : tab?.privacy
 
         let context = ActivityContext(
             bundleID: bundleID,
@@ -34,16 +34,23 @@ final class ContextProbe {
             isSecureInputActive: IsSecureEventInputEnabled(),
             isFocusedElementSecure: application.element(kAXFocusedUIElementAttribute)?.string(kAXSubroleAttribute) == kAXSecureTextFieldSubrole,
             isWindowCaptureBlocked: frontWindow?.blocksCapture ?? false,
-            isPrivateWindow: (tab?.isPrivate ?? false) || (Self.safariBundleIDs.contains(bundleID) && isSafariWindowPrivate(application))
+            isPrivateWindow: windowPrivacy == .private,
+            isBrowserURLUnknown: tab != nil && frontWindow != nil && tab?.url == nil,
+            isPrivateWindowUnknown: windowPrivacy == .unknown
         )
         return FrontmostApp(processID: app.processIdentifier, windowID: frontWindow?.id, context: context, signals: signals)
     }
 
-    /// Safari exposes no scripting property for this; its Window menu offers "Move Tab to New Private Window" only in private windows.
-    private func isSafariWindowPrivate(_ application: AXUIElement) -> Bool {
-        guard let menuBar = application.element(kAXMenuBarAttribute),
-              let windowMenu = menuBar.children.first(where: { $0.title == "Window" })?.children.first else { return false }
-        return windowMenu.children.contains { $0.title == "Move Tab to New Private Window" }
+    /// Safari exposes no scripting property for this; its Window menu offers "Move Tab to New Private Window" only in
+    /// private windows. The labels are English-only, so any other UI language or menu layout yields `.unknown`.
+    private func safariWindowPrivacy(_ application: AXUIElement) -> WindowPrivacy {
+        guard Locale.preferredLanguages.first?.hasPrefix("en") == true,
+              let menuBar = application.element(kAXMenuBarAttribute),
+              let windowMenu = menuBar.children.first(where: { $0.title == "Window" })?.children.first else { return .unknown }
+        let titles = Set(windowMenu.children.compactMap(\.title))
+        if titles.contains("Move Tab to New Private Window") { return .private }
+        if titles.contains("Move Tab to New Window") { return .normal }
+        return .unknown
     }
 
     private func nonEmpty(_ string: String) -> String? {

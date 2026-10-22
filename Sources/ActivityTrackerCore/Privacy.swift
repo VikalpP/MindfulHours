@@ -7,6 +7,7 @@ public enum ProtectionReason: String, CaseIterable, Codable, Sendable, Comparabl
     case secureInput
     case captureBlockedWindow
     case privateWindow
+    case unverifiedBrowser
     case sensitiveText
 
     public var label: String {
@@ -17,6 +18,7 @@ public enum ProtectionReason: String, CaseIterable, Codable, Sendable, Comparabl
         case .secureInput: "Password field focused"
         case .captureBlockedWindow: "Window blocks screen capture"
         case .privateWindow: "Private/incognito window"
+        case .unverifiedBrowser: "Browser tab couldn't be checked"
         case .sensitiveText: "Sensitive text on screen"
         }
     }
@@ -36,12 +38,25 @@ public struct PrivacySignals: Equatable, Sendable {
     public var isFocusedElementSecure = false
     public var isWindowCaptureBlocked = false
     public var isPrivateWindow = false
+    /// A supported browser is in front but its tab URL couldn't be read (e.g. Automation denied).
+    public var isBrowserURLUnknown = false
+    /// A supported browser is in front but whether the window is private couldn't be determined.
+    public var isPrivateWindowUnknown = false
 
-    public init(isSecureInputActive: Bool = false, isFocusedElementSecure: Bool = false, isWindowCaptureBlocked: Bool = false, isPrivateWindow: Bool = false) {
+    public init(
+        isSecureInputActive: Bool = false,
+        isFocusedElementSecure: Bool = false,
+        isWindowCaptureBlocked: Bool = false,
+        isPrivateWindow: Bool = false,
+        isBrowserURLUnknown: Bool = false,
+        isPrivateWindowUnknown: Bool = false
+    ) {
         self.isSecureInputActive = isSecureInputActive
         self.isFocusedElementSecure = isFocusedElementSecure
         self.isWindowCaptureBlocked = isWindowCaptureBlocked
         self.isPrivateWindow = isPrivateWindow
+        self.isBrowserURLUnknown = isBrowserURLUnknown
+        self.isPrivateWindowUnknown = isPrivateWindowUnknown
     }
 }
 
@@ -134,6 +149,10 @@ public struct PrivacyRules: Sendable {
         }
         if protectsPrivateWindows && signals.isPrivateWindow {
             verdict.reasons.insert(.privateWindow)
+        }
+        // Fail closed: URL rules and private-window protection can't be trusted without the browser's answer.
+        if signals.isBrowserURLUnknown || (protectsPrivateWindows && signals.isPrivateWindowUnknown && !signals.isPrivateWindow) {
+            verdict.reasons.insert(.unverifiedBrowser)
         }
         return verdict
     }

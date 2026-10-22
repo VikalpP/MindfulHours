@@ -55,6 +55,21 @@ private func chrome(title: String = "Docs", url: String) -> ActivityContext {
         }
     }
 
+    @Test func unreadableBrowserStateFailsClosed() {
+        let context = ActivityContext(bundleID: "com.google.Chrome", appName: "Google Chrome", windowTitle: "Docs")
+        let urlUnknown = rules.evaluate(context, signals: .init(isBrowserURLUnknown: true))
+        #expect(urlUnknown.reasons == [.unverifiedBrowser])
+        #expect(!urlUnknown.allowsScreenshot && !urlUnknown.hidesMetadata)
+
+        let modeUnknown = rules.evaluate(chrome(url: "https://github.com"), signals: .init(isPrivateWindowUnknown: true))
+        #expect(modeUnknown.reasons == [.unverifiedBrowser])
+
+        var relaxed = rules
+        relaxed.protectsPrivateWindows = false
+        #expect(relaxed.evaluate(chrome(url: "https://github.com"), signals: .init(isPrivateWindowUnknown: true)) == .clear)
+        #expect(relaxed.evaluate(context, signals: .init(isBrowserURLUnknown: true)).reasons == [.unverifiedBrowser])
+    }
+
     @Test func privateWindowsCanBeAllowed() {
         var relaxed = rules
         relaxed.protectsPrivateWindows = false
