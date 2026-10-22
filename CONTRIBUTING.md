@@ -30,6 +30,14 @@ The app works without AI: minutes are then recorded from app, window title and U
 | `Tests/MindfulHoursCoreTests` | Swift Testing suites for the core |
 | `scripts/` | App bundling, release packaging, icon generation, proxy setup |
 
+To capture the whole Settings window at full height (e.g. for docs), run:
+
+```sh
+open -n -W /Applications/MindfulHours.app --args --snapshot-settings ~/Desktop/settings.png --appearance light
+```
+
+Launch it with `open` rather than the binary directly, so macOS evaluates the app's own permissions instead of your terminal's.
+
 The app icon, the README header icon and the GitHub social preview are drawn in code; after changing them run `swift scripts/make-brand-assets.swift` from the repo root.
 
 ## Guidelines

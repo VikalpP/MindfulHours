@@ -40,6 +40,18 @@ enum WindowCapture {
         return .captured(WindowSnapshot(jpeg: jpeg, fingerprint: fingerprint))
     }
 
+    /// Forces Vision to load its text model so the first real screenshot isn't delayed or skipped.
+    static func warmUpTextRecognition() async {
+        let sample = NSImage(size: NSSize(width: 240, height: 48), flipped: false) { rect in
+            NSColor.white.setFill()
+            rect.fill()
+            ("MindfulHours 2026" as NSString).draw(at: NSPoint(x: 8, y: 12), withAttributes: [.font: NSFont.systemFont(ofSize: 20)])
+            return true
+        }
+        guard let image = sample.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return }
+        _ = try? await recognizedLines(in: image)
+    }
+
     /// Runs on-device; nothing leaves the Mac.
     private nonisolated static func recognizedLines(in image: CGImage) async throws -> [String] {
         try await Task.detached(priority: .utility) {

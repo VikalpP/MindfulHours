@@ -48,10 +48,10 @@ Prefer building from source? See [CONTRIBUTING.md](CONTRIBUTING.md#development-s
 
 | Layer | Source | Cadence |
 |---|---|---|
-| Frontmost app, window title, open document | `NSWorkspace` + Accessibility API | every 5 s |
-| Active tab URL (Safari, Chrome, Comet, Arc, Brave, Edge, Vivaldi, Opera) | AppleScript | every 5 s |
-| Away detection | input idle time, screen lock, sleep; video/call apps holding a display-sleep assertion count as present | every 5 s |
-| Screenshot of the focused window | ScreenCaptureKit, kept in memory only | ~every 25 s |
+| Frontmost app, window title, open document | `NSWorkspace` + Accessibility API | every 5 s (configurable) |
+| Active tab URL (Safari, Chrome, Comet, Arc, Brave, Edge, Vivaldi, Opera) | AppleScript | every activity check |
+| Away detection | input idle time, screen lock, sleep; video/call apps holding a display-sleep assertion count as present | every activity check |
+| Screenshot of the focused window | ScreenCaptureKit, kept in memory only | every 25 s (configurable) |
 | "What are you doing in the app?" | any OpenAI-compatible model endpoint | once per active minute |
 
 macOS has no API for what happens inside an app, so each active minute MindfulHours sends the window metadata and (when allowed) a screenshot of the focused window to the model, which returns a specific summary, a task label, project and category. Consecutive minutes on the same task merge into blocks on the timeline.
@@ -74,7 +74,8 @@ Before every screenshot, MindfulHours checks these signals. Any hit means **no s
 | Secrets on screen (card numbers, IBANs, SSNs, API keys, private keys, recovery codes) | on-device Vision OCR | kept |
 
 - When the title or URL is itself sensitive, the minute is stored as *"App — private content hidden"* and nothing goes to the model. Otherwise the model receives only the metadata and is told the screenshot was withheld.
-- Any protection seen in an app during a minute withholds that app's screenshot for the minute, and every capture is re-checked after it completes.
+- A page that was protected at any point in a minute never contributes a screenshot to that minute, and every capture is re-checked against the current window after it completes.
+- Screenshots wait until the on-device text scanner has loaded (up to ~30 s after a reboot), so none skip the scan.
 - Every skip is logged (reason and matched rule, never the content) under **Settings › Skipped screenshots**.
 - Data lives in `~/Library/Application Support/MindfulHours/activity.sqlite`. Screenshots are never written to disk. The only network traffic is to the model endpoint you configure.
 

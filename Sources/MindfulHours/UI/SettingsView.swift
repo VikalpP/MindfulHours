@@ -9,6 +9,8 @@ struct SettingsView: View {
     @AppStorage(SettingsKey.proxyAPIKey) private var proxyAPIKey = ""
     @AppStorage(SettingsKey.model) private var modelName = SettingsDefault.model
     @AppStorage(SettingsKey.idleThresholdSeconds) private var idleThresholdSeconds = SettingsDefault.idleThresholdSeconds
+    @AppStorage(SettingsKey.sampleIntervalSeconds) private var sampleIntervalSeconds = SettingsDefault.sampleIntervalSeconds
+    @AppStorage(SettingsKey.screenshotIntervalSeconds) private var screenshotIntervalSeconds = SettingsDefault.screenshotIntervalSeconds
     @AppStorage(SettingsKey.excludedBundleIDs) private var excludedBundleIDs = SettingsDefault.excludedBundleIDs
     @AppStorage(SettingsKey.blockedURLPatterns) private var blockedURLPatterns = SettingsDefault.blockedURLPatterns
     @AppStorage(SettingsKey.sensitiveTitleKeywords) private var sensitiveTitleKeywords = SettingsDefault.sensitiveTitleKeywords
@@ -56,6 +58,21 @@ struct SettingsView: View {
             }
 
             Section("Tracking") {
+                Picker("Check activity every", selection: $sampleIntervalSeconds) {
+                    ForEach(SettingsDefault.sampleIntervalChoices, id: \.self) { Text("\(Int($0)) seconds").tag($0) }
+                }
+                Picker("Capture a screenshot every", selection: $screenshotIntervalSeconds) {
+                    ForEach(SettingsDefault.screenshotIntervalChoices.filter { $0 >= sampleIntervalSeconds }, id: \.self) {
+                        Text("\(Int($0)) seconds").tag($0)
+                    }
+                }
+                .disabled(!aiEnabled || !screenshotsEnabled)
+                .onChange(of: sampleIntervalSeconds) { _, newValue in
+                    screenshotIntervalSeconds = max(screenshotIntervalSeconds, SettingsDefault.screenshotIntervalChoices.first { $0 >= newValue } ?? newValue)
+                }
+                DisclosureGroup("How these settings work") {
+                    TrackingFrequencyExplanation(sampleInterval: sampleIntervalSeconds, screenshotInterval: screenshotIntervalSeconds)
+                }
                 Stepper(value: $idleThresholdSeconds, in: 60...1800, step: 60) {
                     Text("Away after \(Int(idleThresholdSeconds / 60)) min without input")
                 }
@@ -167,5 +184,23 @@ struct SettingsView: View {
                 connectionResult = .failure(error)
             }
         }
+    }
+}
+
+private struct TrackingFrequencyExplanation: View {
+    let sampleInterval: Double
+    let screenshotInterval: Double
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("**Check activity** — every \(Int(sampleInterval)) s MindfulHours notes the frontmost app, window title and browser URL, and whether you're at the Mac. All time totals and the timeline are built from these checks. Shorter catches quick app switches more precisely; longer uses slightly less energy.")
+            Text("**Capture a screenshot** — every \(Int(screenshotInterval)) s it captures the focused window in memory and scans it on-device for secrets. Each minute, the newest safe screenshot of the page you spent most of that minute on goes to the AI with the window details. Screenshots are never saved to disk.")
+            Text("**AI calls don't change** — there is one AI description per active minute regardless of these settings. More frequent screenshots make that description reflect the end of the minute more closely and cost a little more CPU for capture and text scanning. Above 60 s, some minutes have no screenshot and are described from the title and URL only.")
+            Text("Screenshots can't be more frequent than activity checks, because they're taken during a check.")
+        }
+        .font(.callout)
+        .foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
+        .padding(.vertical, 4)
     }
 }

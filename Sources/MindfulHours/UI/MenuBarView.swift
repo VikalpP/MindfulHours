@@ -86,6 +86,11 @@ struct MenuBarView: View {
                     }
                 }
             }
+            if !recorder.isTextScanReady {
+                Label("Preparing on-device text scan — screenshots start when ready", systemImage: "hourglass")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
             if !recorder.currentProtection.isEmpty {
                 Label("Not captured: \(recorder.currentProtection.map(\.label).joined(separator: ", "))", systemImage: "lock.shield")
                     .font(.caption)

@@ -138,3 +138,35 @@ private func chrome(title: String = "Docs", url: String) -> ActivityContext {
         #expect(SensitiveTextDetector.findings(in: screen).isEmpty)
     }
 }
+
+@Suite struct ScreenshotSelectionTests {
+    private let docs = ActivityContext(bundleID: "com.google.Chrome", appName: "Chrome", windowTitle: "Plan – Google Docs", url: "https://docs.google.com/d/1")
+    private let passwords = ActivityContext(bundleID: "com.google.Chrome", appName: "Chrome", windowTitle: "Passwords", url: "chrome://password-manager")
+    private let docsRenamed = ActivityContext(bundleID: "com.google.Chrome", appName: "Chrome", windowTitle: "Plan (2) – Google Docs", url: "https://docs.google.com/d/1")
+    private let t0 = Date(timeIntervalSince1970: 1_800_000_000)
+
+    private func page(_ context: ActivityContext, at seconds: TimeInterval) -> CapturedPage {
+        CapturedPage(continuityKey: context.continuityKey, bundleID: context.bundleID, capturedAt: t0.addingTimeInterval(seconds))
+    }
+
+    @Test func safePageKeepsItsScreenshotWhenAnotherTabWasProtected() {
+        let chosen = ScreenshotSelection.page(describing: docs, from: [page(docs, at: 10)], protectedKeys: [passwords.continuityKey])
+        #expect(chosen == page(docs, at: 10))
+    }
+
+    @Test func protectedPageNeverGetsAScreenshot() {
+        #expect(ScreenshotSelection.page(describing: docs, from: [page(docs, at: 10)], protectedKeys: [docs.continuityKey]) == nil)
+    }
+
+    @Test func fallsBackToNewestUnprotectedScreenshotOfSameApp() {
+        let captured = [page(docs, at: 5), page(docsRenamed, at: 30)]
+        let other = ActivityContext(bundleID: "com.google.Chrome", appName: "Chrome", windowTitle: "Plan (3) – Google Docs")
+        #expect(ScreenshotSelection.page(describing: other, from: captured, protectedKeys: []) == page(docsRenamed, at: 30))
+        #expect(ScreenshotSelection.page(describing: other, from: captured, protectedKeys: [docsRenamed.continuityKey]) == page(docs, at: 5))
+    }
+
+    @Test func neverBorrowsAcrossApps() {
+        let terminal = ActivityContext(bundleID: "com.apple.Terminal", appName: "Terminal", windowTitle: "zsh")
+        #expect(ScreenshotSelection.page(describing: terminal, from: [page(docs, at: 10)], protectedKeys: []) == nil)
+    }
+}

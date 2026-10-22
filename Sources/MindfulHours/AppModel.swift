@@ -39,6 +39,9 @@ final class AppModel: ObservableObject {
             fatalError("MindfulHours cannot open its database at \(ActivityStore.defaultURL.path): \(error)")
         }
         recorder = ActivityRecorder(store: store)
+    }
+
+    func startTracking() {
         recorder.start()
         if !permissions.allGranted { requestMissingPermissions() }
     }

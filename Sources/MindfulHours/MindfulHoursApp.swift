@@ -5,9 +5,30 @@ enum WindowID {
     static let settings = "settings"
 }
 
+@MainActor
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    let model = AppModel()
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        if let request = SnapshotRequest(arguments: CommandLine.arguments) {
+            do {
+                try SettingsSnapshot.render(model: model, request: request)
+                print("Wrote \(request.outputPath)")
+            } catch {
+                FileHandle.standardError.write(Data("Snapshot failed: \(error)\n".utf8))
+            }
+            NSApp.terminate(nil)
+            return
+        }
+        model.startTracking()
+    }
+}
+
 @main
 struct MindfulHoursApp: App {
-    @StateObject private var model = AppModel()
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+
+    private var model: AppModel { appDelegate.model }
 
     var body: some Scene {
         MenuBarExtra {

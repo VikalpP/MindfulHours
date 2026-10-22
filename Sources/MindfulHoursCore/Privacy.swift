@@ -194,3 +194,27 @@ public struct PrivacyEvent: Identifiable, Hashable, Sendable {
         self.detail = detail
     }
 }
+
+public struct CapturedPage: Equatable, Sendable {
+    public var continuityKey: String
+    public var bundleID: String
+    public var capturedAt: Date
+
+    public init(continuityKey: String, bundleID: String, capturedAt: Date) {
+        self.continuityKey = continuityKey
+        self.bundleID = bundleID
+        self.capturedAt = capturedAt
+    }
+}
+
+public enum ScreenshotSelection {
+    /// Prefers the screenshot of the exact page being described. Titles drift (unread counts, terminal commands),
+    /// so it falls back to the newest screenshot from the same app. Either way, a page that was protected at any
+    /// point in the minute never contributes a screenshot.
+    public static func page(describing context: ActivityContext, from captured: [CapturedPage], protectedKeys: Set<String>) -> CapturedPage? {
+        let usable = captured.filter { !protectedKeys.contains($0.continuityKey) }
+        if protectedKeys.contains(context.continuityKey) { return nil }
+        if let exact = usable.first(where: { $0.continuityKey == context.continuityKey }) { return exact }
+        return usable.filter { $0.bundleID == context.bundleID }.max { $0.capturedAt < $1.capturedAt }
+    }
+}

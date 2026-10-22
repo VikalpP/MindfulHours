@@ -33,7 +33,8 @@ final class ContextProbe {
         let signals = PrivacySignals(
             isSecureInputActive: IsSecureEventInputEnabled(),
             isFocusedElementSecure: application.element(kAXFocusedUIElementAttribute)?.string(kAXSubroleAttribute) == kAXSecureTextFieldSubrole,
-            isWindowCaptureBlocked: frontWindow?.blocksCapture ?? false,
+            // Without Screen Recording permission every window reports "no sharing", and capture can't happen anyway.
+            isWindowCaptureBlocked: CGPreflightScreenCaptureAccess() && (frontWindow?.blocksCapture ?? false),
             isPrivateWindow: windowPrivacy == .private,
             isBrowserURLUnknown: tab != nil && frontWindow != nil && tab?.url == nil,
             isPrivateWindowUnknown: windowPrivacy == .unknown
