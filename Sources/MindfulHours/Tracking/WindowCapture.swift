@@ -1,7 +1,7 @@
 import AppKit
 import ScreenCaptureKit
 import Vision
-import ActivityTrackerCore
+import MindfulHoursCore
 
 struct WindowSnapshot: Sendable {
     let jpeg: Data

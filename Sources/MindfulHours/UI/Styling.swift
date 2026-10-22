@@ -1,5 +1,5 @@
 import SwiftUI
-import ActivityTrackerCore
+import MindfulHoursCore
 
 extension ActivityCategory {
     var color: Color {

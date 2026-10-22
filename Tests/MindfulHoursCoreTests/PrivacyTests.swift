@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import ActivityTrackerCore
+@testable import MindfulHoursCore
 
 private let rules = PrivacyRules(
     excludedBundleIDs: ["com.1password.1password"],

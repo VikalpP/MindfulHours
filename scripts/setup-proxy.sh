@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Installs CLIProxyAPI, signs in with your Claude subscription, and points Activity Tracker at it.
+# Installs CLIProxyAPI, signs in with your Claude subscription, and points MindfulHours at it.
 # Usage: scripts/setup-proxy.sh [--relogin]
 set -euo pipefail
 
-APP_DOMAIN="com.vikalppanseriya.ActivityTracker"
+APP_DOMAIN="com.vikalppanseriya.MindfulHours"
 BASE_URL="http://127.0.0.1:8317/v1"
 
 command -v cliproxyapi >/dev/null || brew install cliproxyapi
@@ -27,12 +27,18 @@ if [[ "${1:-}" == "--relogin" ]] || ! ls "$HOME"/.cli-proxy-api/claude-*.json >/
 fi
 
 brew services restart cliproxyapi
-for _ in {1..20}; do
-  curl -sf -H "Authorization: Bearer $KEY" "$BASE_URL/models" >/dev/null && break
+MODELS_JSON=""
+for _ in {1..60}; do
+  MODELS_JSON="$(curl -sf -H "Authorization: Bearer $KEY" "$BASE_URL/models" || true)"
+  [[ -n "$MODELS_JSON" ]] && break
   sleep 0.5
 done
+if [[ -z "$MODELS_JSON" ]]; then
+  echo "error: CLIProxyAPI did not answer on $BASE_URL within 30s; check: brew services info cliproxyapi" >&2
+  exit 1
+fi
 
-MODELS="$(curl -sf -H "Authorization: Bearer $KEY" "$BASE_URL/models" | python3 -c 'import json,sys; print("\n".join(m["id"] for m in json.load(sys.stdin)["data"]))')"
+MODELS="$(python3 -c 'import json,sys; print("\n".join(m["id"] for m in json.load(sys.stdin)["data"]))' <<<"$MODELS_JSON")"
 PREFERRED_MODEL="claude-haiku-5-5"
 if grep -qx "$PREFERRED_MODEL" <<<"$MODELS"; then
   MODEL="$PREFERRED_MODEL"
@@ -49,4 +55,4 @@ fi
 defaults write "$APP_DOMAIN" proxyBaseURL "$BASE_URL"
 defaults write "$APP_DOMAIN" proxyAPIKey "$KEY"
 defaults write "$APP_DOMAIN" model "$MODEL"
-echo "Activity Tracker now uses $MODEL via $BASE_URL"
+echo "MindfulHours now uses $MODEL via $BASE_URL"

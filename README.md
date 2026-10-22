@@ -1,4 +1,4 @@
-# Activity Tracker
+# MindfulHours
 
 A macOS menu-bar app that records what you do on your Mac, minute by minute — including what you're doing *inside* each app.
 
@@ -32,7 +32,7 @@ Before each screenshot the app evaluates these signals; any hit skips the screen
 
 When the title or URL itself is sensitive, the minute is stored as "<App> — private content hidden" and nothing goes to the model. Otherwise the model still gets the metadata, told the screenshot was withheld. Any protection seen during a minute withholds that minute's screenshot even if it was taken earlier. Every skip is logged (reason and matched rule, never the matched text) under **Settings › Skipped screenshots**.
 
-Data lives in `~/Library/Application Support/ActivityTracker/activity.sqlite` (tables `spans`, `insights`, `day_summaries`, `privacy_events`). Screenshots are never written to disk.
+Data lives in `~/Library/Application Support/MindfulHours/activity.sqlite` (tables `spans`, `insights`, `day_summaries`, `privacy_events`). Screenshots are never written to disk.
 
 ## Setup
 
@@ -62,6 +62,7 @@ CLIProxyAPI exposes every provider it supports behind the same `http://127.0.0.1
 ```sh
 swift build
 swift test
+swift scripts/make-icon.swift   # regenerate Resources/AppIcon.icns
 ```
 
-`ActivityTrackerCore` holds the testable logic (SQLite store, timeline grouping, prompts and parsing, LLM client, image fingerprint). `ActivityTracker` holds the macOS integration (Accessibility, ScreenCaptureKit, AppleScript) and SwiftUI.
+`MindfulHoursCore` holds the testable logic (SQLite store, timeline grouping, prompts and parsing, LLM client, image fingerprint). `MindfulHours` holds the macOS integration (Accessibility, ScreenCaptureKit, AppleScript) and SwiftUI.

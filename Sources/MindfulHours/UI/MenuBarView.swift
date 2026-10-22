@@ -1,5 +1,5 @@
 import SwiftUI
-import ActivityTrackerCore
+import MindfulHoursCore
 
 struct MenuBarView: View {
     @ObservedObject var model: AppModel

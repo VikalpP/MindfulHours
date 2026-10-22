@@ -1,5 +1,5 @@
 import SwiftUI
-import ActivityTrackerCore
+import MindfulHoursCore
 
 struct TimelineView: View {
     @ObservedObject var model: AppModel

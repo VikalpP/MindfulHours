@@ -1,5 +1,5 @@
 import Foundation
-import ActivityTrackerCore
+import MindfulHoursCore
 
 enum SettingsKey {
     static let aiEnabled = "aiEnabled"

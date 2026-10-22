@@ -4,14 +4,15 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-APP="build/ActivityTracker.app"
-BUNDLE_ID="com.vikalppanseriya.ActivityTracker"
+APP="build/MindfulHours.app"
+BUNDLE_ID="com.vikalppanseriya.MindfulHours"
 
 swift build -c release
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-cp "$(swift build -c release --show-bin-path)/ActivityTracker" "$APP/Contents/MacOS/"
+cp "$(swift build -c release --show-bin-path)/MindfulHours" "$APP/Contents/MacOS/"
 cp Resources/Info.plist "$APP/Contents/"
+cp Resources/AppIcon.icns "$APP/Contents/Resources/"
 
 IDENTITY="${CODESIGN_IDENTITY:-$(security find-identity -v -p codesigning | awk -F'"' '/Apple Development/ { print $2; exit }')}"
 if [[ -z "$IDENTITY" ]]; then
@@ -22,10 +23,10 @@ codesign --force --sign "$IDENTITY" --identifier "$BUNDLE_ID" "$APP"
 echo "Built $APP (signed with: $IDENTITY)"
 
 if [[ "${1:-}" == "--install" ]]; then
-  pkill -x ActivityTracker || true
+  pkill -x MindfulHours || true
   mkdir -p "$HOME/Applications"
-  rm -rf "$HOME/Applications/ActivityTracker.app"
+  rm -rf "$HOME/Applications/MindfulHours.app"
   cp -R "$APP" "$HOME/Applications/"
-  open "$HOME/Applications/ActivityTracker.app"
-  echo "Installed to ~/Applications/ActivityTracker.app"
+  open "$HOME/Applications/MindfulHours.app"
+  echo "Installed to ~/Applications/MindfulHours.app"
 fi

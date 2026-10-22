@@ -1,7 +1,7 @@
 import CoreGraphics
 import Foundation
 import Testing
-@testable import ActivityTrackerCore
+@testable import MindfulHoursCore
 
 private let editor = ActivityContext(bundleID: "com.microsoft.VSCode", appName: "Code", windowTitle: "Recorder.swift — tracker")
 private let browser = ActivityContext(bundleID: "com.google.Chrome", appName: "Chrome", windowTitle: "PR #12", url: "https://github.com/x/y/pull/12")

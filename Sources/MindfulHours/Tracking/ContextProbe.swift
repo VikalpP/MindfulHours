@@ -1,7 +1,7 @@
 import AppKit
 import ApplicationServices
 import Carbon.HIToolbox
-import ActivityTrackerCore
+import MindfulHoursCore
 
 struct FrontmostApp {
     let processID: pid_t

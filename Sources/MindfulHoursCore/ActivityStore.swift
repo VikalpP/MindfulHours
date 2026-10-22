@@ -6,7 +6,7 @@ public actor ActivityStore {
 
     public static var defaultURL: URL {
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        return support.appendingPathComponent("ActivityTracker", isDirectory: true).appendingPathComponent("activity.sqlite")
+        return support.appendingPathComponent("MindfulHours", isDirectory: true).appendingPathComponent("activity.sqlite")
     }
 
     public init(url: URL = ActivityStore.defaultURL) throws {

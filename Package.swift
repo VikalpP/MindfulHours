@@ -2,23 +2,23 @@
 import PackageDescription
 
 let package = Package(
-    name: "ActivityTracker",
+    name: "MindfulHours",
     platforms: [.macOS(.v14)],
     products: [
-        .executable(name: "ActivityTracker", targets: ["ActivityTracker"]),
+        .executable(name: "MindfulHours", targets: ["MindfulHours"]),
     ],
     targets: [
         .target(
-            name: "ActivityTrackerCore",
+            name: "MindfulHoursCore",
             linkerSettings: [.linkedLibrary("sqlite3")]
         ),
         .executableTarget(
-            name: "ActivityTracker",
-            dependencies: ["ActivityTrackerCore"]
+            name: "MindfulHours",
+            dependencies: ["MindfulHoursCore"]
         ),
         .testTarget(
-            name: "ActivityTrackerCoreTests",
-            dependencies: ["ActivityTrackerCore"]
+            name: "MindfulHoursCoreTests",
+            dependencies: ["MindfulHoursCore"]
         ),
     ]
 )

@@ -1,7 +1,7 @@
 import AppKit
 import ApplicationServices
 import ServiceManagement
-import ActivityTrackerCore
+import MindfulHoursCore
 
 struct PermissionState: Equatable {
     var accessibility: Bool
@@ -36,7 +36,7 @@ final class AppModel: ObservableObject {
         do {
             store = try ActivityStore()
         } catch {
-            fatalError("ActivityTracker cannot open its database at \(ActivityStore.defaultURL.path): \(error)")
+            fatalError("MindfulHours cannot open its database at \(ActivityStore.defaultURL.path): \(error)")
         }
         recorder = ActivityRecorder(store: store)
         recorder.start()
@@ -72,7 +72,7 @@ final class AppModel: ObservableObject {
             activity.categoryUsage = Timeline.categoryUsage(from: insights)
             activity.summary = try await store.daySummary(for: activity.dayKey)
         } catch {
-            NSLog("ActivityTracker: failed to load day: \(error)")
+            NSLog("MindfulHours: failed to load day: \(error)")
         }
         return activity
     }
@@ -95,7 +95,7 @@ final class AppModel: ObservableObject {
             do {
                 if newValue { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }
             } catch {
-                NSLog("ActivityTracker: login item change failed: \(error)")
+                NSLog("MindfulHours: login item change failed: \(error)")
             }
             objectWillChange.send()
         }

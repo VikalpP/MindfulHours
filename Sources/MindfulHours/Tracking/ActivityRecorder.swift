@@ -1,6 +1,6 @@
 import CoreGraphics
 import Foundation
-import ActivityTrackerCore
+import MindfulHoursCore
 
 enum TrackingStatus: Equatable {
     case tracking
@@ -132,7 +132,7 @@ final class ActivityRecorder: ObservableObject {
             do {
                 try await store.logPrivacyEvent(event)
             } catch {
-                NSLog("ActivityTracker: failed to log privacy event: \(error)")
+                NSLog("MindfulHours: failed to log privacy event: \(error)")
             }
         }
     }
@@ -142,7 +142,7 @@ final class ActivityRecorder: ObservableObject {
             do {
                 try await store.recordPresence(context, at: now, maxGap: Self.sampleInterval * 2.5)
             } catch {
-                NSLog("ActivityTracker: failed to record span: \(error)")
+                NSLog("MindfulHours: failed to record span: \(error)")
             }
         }
     }
@@ -170,7 +170,7 @@ final class ActivityRecorder: ObservableObject {
                     break
                 }
             } catch {
-                NSLog("ActivityTracker: screenshot failed: \(error.localizedDescription)")
+                NSLog("MindfulHours: screenshot failed: \(error.localizedDescription)")
             }
         }
     }
@@ -295,7 +295,7 @@ final class ActivityRecorder: ObservableObject {
             latestInsight = insight
             dataRevision += 1
         } catch {
-            NSLog("ActivityTracker: failed to save insight: \(error)")
+            NSLog("MindfulHours: failed to save insight: \(error)")
         }
     }
 }

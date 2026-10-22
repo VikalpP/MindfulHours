@@ -6,7 +6,7 @@ enum WindowID {
 }
 
 @main
-struct ActivityTrackerApp: App {
+struct MindfulHoursApp: App {
     @StateObject private var model = AppModel()
 
     var body: some Scene {
@@ -23,7 +23,7 @@ struct ActivityTrackerApp: App {
         }
         .defaultSize(width: 1040, height: 720)
 
-        Window("Activity Tracker Settings", id: WindowID.settings) {
+        Window("MindfulHours Settings", id: WindowID.settings) {
             SettingsView(model: model)
                 .frame(minWidth: 560, minHeight: 520)
         }
