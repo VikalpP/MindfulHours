@@ -2,16 +2,18 @@ import AppKit
 import ScreenCaptureKit
 import SwiftUI
 
-/// `MindfulHours --snapshot-settings|--snapshot-timeline <file.png> [--appearance light|dark] [--no-frame]`
+/// `MindfulHours --snapshot-settings|--snapshot-timeline|--snapshot-menu <file.png> [--appearance light|dark] [--no-frame]`
 struct SnapshotRequest {
     enum Target {
         case settings
         case timeline
+        case menu
 
         var title: String {
             switch self {
             case .settings: "MindfulHours Settings"
             case .timeline: "Activity Timeline"
+            case .menu: "MindfulHours"
             }
         }
 
@@ -19,6 +21,7 @@ struct SnapshotRequest {
             switch self {
             case .settings: 600
             case .timeline: 1040
+            case .menu: 388
             }
         }
     }
@@ -37,6 +40,9 @@ struct SnapshotRequest {
             outputPath = (path as NSString).expandingTildeInPath
         } else if let path = value(after: "--snapshot-timeline") {
             target = .timeline
+            outputPath = (path as NSString).expandingTildeInPath
+        } else if let path = value(after: "--snapshot-menu") {
+            target = .menu
             outputPath = (path as NSString).expandingTildeInPath
         } else {
             return nil
@@ -61,9 +67,10 @@ enum SnapshotError: Error {
 @MainActor
 enum AppWindowSnapshot {
     static func render(model: AppModel, request: SnapshotRequest) async throws {
-        let controller = switch request.target {
+        let (controller, idealHeight) = switch request.target {
         case .settings: fixedSizeHost(SettingsView(model: model))
         case .timeline: fixedSizeHost(TimelineView(model: model, recorder: model.recorder))
+        case .menu: fixedSizeHost(MenuBarView(model: model, recorder: model.recorder))
         }
         let window = UnconstrainedWindow(
             contentRect: NSRect(x: 0, y: 0, width: request.target.width, height: 2_000),
@@ -76,10 +83,7 @@ enum AppWindowSnapshot {
         window.appearance = request.appearance.flatMap(NSAppearance.init(named:))
         window.setContentSize(NSSize(width: request.target.width, height: 2_000))
         let hosting = controller.view
-        // ScreenCaptureKit only captures windows that touch a display, so leave a 1-point sliver at the right edge;
-        // ignoring the global clip then captures the rest of the window that hangs off-screen.
-        let screen = NSScreen.main?.frame ?? .zero
-        window.setFrameOrigin(NSPoint(x: screen.maxX - 1, y: screen.minY))
+        pinToScreenEdge(window)
         NSApp.activate()
         window.makeKeyAndOrderFront(nil)
         defer { window.close() }
@@ -88,6 +92,11 @@ enum AppWindowSnapshot {
         if let scrollView = hosting.firstDescendant(ofType: NSScrollView.self), let document = scrollView.documentView {
             let insets = scrollView.contentInsets
             window.setContentSize(NSSize(width: request.target.width, height: ceil(document.frame.height + insets.top + insets.bottom)))
+            pinToScreenEdge(window)
+            await settle(for: 0.5)
+        } else {
+            window.setContentSize(NSSize(width: request.target.width, height: ceil(idealHeight(request.target.width))))
+            pinToScreenEdge(window)
             await settle(for: 0.5)
         }
 
@@ -98,11 +107,20 @@ enum AppWindowSnapshot {
         try png.write(to: URL(fileURLWithPath: request.outputPath))
     }
 
-    /// Without this the controller resizes the window to the view's ideal size instead of the full-height size set here.
-    private static func fixedSizeHost<V: View>(_ view: V) -> NSViewController {
+    /// ScreenCaptureKit only captures windows that touch a display, so leave a 1-point sliver at the right edge;
+    /// ignoring the global clip then captures the rest of the window hanging off-screen. Resizing keeps the top edge
+    /// fixed, so this is re-applied after every resize or a short window ends up entirely above the screen.
+    private static func pinToScreenEdge(_ window: NSWindow) {
+        let screen = NSScreen.main?.frame ?? .zero
+        window.setFrameOrigin(NSPoint(x: screen.maxX - 1, y: screen.minY))
+    }
+
+    /// Sizing is turned off so the controller doesn't shrink the window to the view's ideal size; views without a
+    /// scroll view are then sized from `idealHeight` instead.
+    private static func fixedSizeHost<V: View>(_ view: V) -> (NSViewController, idealHeight: (CGFloat) -> CGFloat) {
         let controller = NSHostingController(rootView: view)
         controller.sizingOptions = []
-        return controller
+        return (controller, { width in controller.sizeThatFits(in: CGSize(width: width, height: .greatestFiniteMagnitude)).height })
     }
 
     private static func capture(_ window: NSWindow, includingFrame: Bool) async throws -> CGImage {

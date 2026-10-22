@@ -47,6 +47,9 @@ struct CategoryBar: View {
         let total = max(usage.reduce(0) { $0 + $1.seconds }, 1)
         GeometryReader { proxy in
             HStack(spacing: 1) {
+                if usage.isEmpty {
+                    Rectangle().fill(.quaternary)
+                }
                 ForEach(usage) { entry in
                     Rectangle()
                         .fill(entry.category.color)
