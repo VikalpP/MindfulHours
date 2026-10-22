@@ -36,7 +36,7 @@ To capture the whole Settings window at full height (e.g. for docs), run:
 open -n -W /Applications/MindfulHours.app --args --snapshot-settings ~/Desktop/settings.png --appearance light
 ```
 
-Launch it with `open` rather than the binary directly, so macOS evaluates the app's own permissions instead of your terminal's.
+The result looks like a ⌘⇧4-Space window screenshot: title bar, rounded corners and the system shadow on a transparent background, at Retina resolution. Add `--no-frame` for just the content. Launch it with `open` (not the binary directly) so macOS checks the app's own permissions, and keep your Mac unlocked so the window renders in its active style.
 
 The app icon, the README header icon and the GitHub social preview are drawn in code; after changing them run `swift scripts/make-brand-assets.swift` from the repo root.
 

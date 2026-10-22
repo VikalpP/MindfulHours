@@ -11,13 +11,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         if let request = SnapshotRequest(arguments: CommandLine.arguments) {
-            do {
-                try SettingsSnapshot.render(model: model, request: request)
-                print("Wrote \(request.outputPath)")
-            } catch {
-                FileHandle.standardError.write(Data("Snapshot failed: \(error)\n".utf8))
+            Task {
+                do {
+                    try await SettingsSnapshot.render(model: model, request: request)
+                    print("Wrote \(request.outputPath)")
+                } catch {
+                    FileHandle.standardError.write(Data("Snapshot failed: \(error)\n".utf8))
+                }
+                NSApp.terminate(nil)
             }
-            NSApp.terminate(nil)
             return
         }
         model.startTracking()
