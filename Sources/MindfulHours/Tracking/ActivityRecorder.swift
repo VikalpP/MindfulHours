@@ -42,6 +42,8 @@ final class ActivityRecorder: ObservableObject {
     private var protectionByContinuityKey: [String: Set<ProtectionReason>] = [:]
     private var lastLoggedProtection: (bundleID: String, reasons: Set<ProtectionReason>, at: Date)?
     private var lastSnapshotAt = Date.distantPast
+    /// Bumped whenever any protection is seen, so a capture that overlapped one can be discarded.
+    private var protectionEpoch = 0
     private var isCapturing = false
 
     private var lastAnalyzed: (continuityKey: String, fingerprint: ImageFingerprint?, insight: Insight, analyzedAt: Date)?
@@ -124,6 +126,7 @@ final class ActivityRecorder: ObservableObject {
 
     private func noteProtection(_ reasons: Set<ProtectionReason>, for context: ActivityContext, detail: String?, at now: Date) {
         guard !reasons.isEmpty else { return }
+        protectionEpoch += 1
         protectionByContinuityKey[context.continuityKey, default: []].formUnion(reasons)
 
         if let last = lastLoggedProtection, last.bundleID == context.bundleID, last.reasons == reasons,
@@ -159,12 +162,15 @@ final class ActivityRecorder: ObservableObject {
         isCapturing = true
         lastSnapshotAt = now
         let captureMinute = minuteStart
+        let epochAtStart = protectionEpoch
         Task {
             defer { isCapturing = false }
             do {
                 switch try await WindowCapture.capture(windowID: windowID, scanningText: settings.scansScreenshotText) {
                 case .captured(let snapshot):
-                    guard minuteStart == captureMinute, isStillClear(windowID: windowID, context: context, settings: settings) else { return }
+                    guard minuteStart == captureMinute,
+                          isStillClear(windowID: windowID, context: context, settings: settings),
+                          protectionEpoch == epochAtStart else { return }
                     let page = CapturedPage(continuityKey: context.continuityKey, bundleID: context.bundleID, capturedAt: now)
                     snapshotsByContinuityKey[context.continuityKey] = (snapshot, page)
                 case .withheld(let findings):
@@ -182,10 +188,11 @@ final class ActivityRecorder: ObservableObject {
 
     /// The window may have changed (tab switch, password field focus) while the capture and text scan ran.
     private func isStillClear(windowID: CGWindowID, context: ActivityContext, settings: AppSettings) -> Bool {
-        guard let front = probe.frontmostApp(), front.windowID == windowID, front.context.bundleID == context.bundleID else { return false }
+        guard let front = probe.frontmostApp(), front.windowID == windowID else { return false }
         let verdict = settings.privacy.evaluate(front.context, signals: front.signals)
         noteProtection(verdict.reasons, for: verdict.hidesMetadata ? front.context.redacted : front.context, detail: verdict.matchedRule, at: .now)
-        return verdict.allowsScreenshot
+        // A different page (tab switch, navigation) means the image may show either page, so it can't be trusted.
+        return verdict.allowsScreenshot && front.context.continuityKey == context.continuityKey
     }
 
     private func rollMinute(at now: Date, settings: AppSettings) {
