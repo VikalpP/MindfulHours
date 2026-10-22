@@ -13,7 +13,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let request = SnapshotRequest(arguments: CommandLine.arguments) {
             Task {
                 do {
-                    try await SettingsSnapshot.render(model: model, request: request)
+                    try await AppWindowSnapshot.render(model: model, request: request)
                     print("Wrote \(request.outputPath)")
                 } catch {
                     FileHandle.standardError.write(Data("Snapshot failed: \(error)\n".utf8))

@@ -19,6 +19,8 @@ struct DayActivity {
     var blocks: [ActivityBlock] = []
     var appUsage: [AppUsage] = []
     var categoryUsage: [CategoryUsage] = []
+    var lanes: [AppLane] = []
+    var laneHours: DateInterval?
     var activeSeconds: TimeInterval = 0
     var summary: DaySummary?
 
@@ -67,9 +69,12 @@ final class AppModel: ObservableObject {
         let interval = Timeline.dayInterval(containing: day)
         var activity = DayActivity(interval: interval)
         do {
-            let insights = try await store.insights(in: interval)
-            let spans = try await store.spans(overlapping: interval)
-            activity.blocks = Timeline.blocks(from: insights)
+            // Lock-screen time recorded before it counted as away shouldn't appear as an app or a task.
+            let insights = try await store.insights(in: interval).filter { !PresenceMonitor.isLockScreen($0.context.bundleID) }
+            let spans = try await store.spans(overlapping: interval).filter { !PresenceMonitor.isLockScreen($0.context.bundleID) }
+            activity.blocks = Timeline.withAppUsage(Timeline.blocks(from: insights), from: spans)
+            activity.lanes = Timeline.lanes(from: spans, within: interval)
+            activity.laneHours = Timeline.activeHours(of: spans, within: interval)
             activity.appUsage = Timeline.appUsage(from: spans, within: interval)
             activity.activeSeconds = activity.appUsage.reduce(0) { $0 + $1.seconds }
             activity.categoryUsage = Timeline.categoryUsage(from: insights)

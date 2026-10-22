@@ -115,7 +115,10 @@ public enum Prompts {
             let range = "\(timeFormatter.string(from: block.start))-\(timeFormatter.string(from: block.end))"
             let project = block.project.map { " (\($0))" } ?? ""
             let details = block.summaries.prefix(6).joined(separator: "; ")
-            lines.append("- \(range) \(block.task)\(project) [\(block.category.rawValue)] via \(block.apps.joined(separator: ", ")): \(details)")
+            let apps = block.appUsage.isEmpty
+                ? block.apps.joined(separator: ", ")
+                : block.appUsage.prefix(4).map { "\($0.appName) \(Timeline.formatCompactDuration($0.seconds))" }.joined(separator: ", ")
+            lines.append("- \(range) \(block.task)\(project) [\(block.category.rawValue)] via \(apps): \(details)")
         }
         lines.append("")
         lines.append("Top apps by foreground time:")

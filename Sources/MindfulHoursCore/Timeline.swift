@@ -8,6 +8,8 @@ public struct ActivityBlock: Identifiable, Hashable, Sendable {
     public var category: ActivityCategory
     public var summaries: [String]
     public var apps: [String]
+    /// Every app used during the block, from activity checks rather than AI minutes, so secondary apps show up too.
+    public var appUsage: [AppUsage] = []
 
     public var id: Date { start }
     public var duration: TimeInterval { end.timeIntervalSince(start) }
@@ -158,5 +160,106 @@ extension Timeline {
         let minutes = Int((seconds / 60).rounded())
         if minutes < 60 { return "\(minutes)m" }
         return minutes % 60 == 0 ? "\(minutes / 60)h" : "\(minutes / 60)h \(minutes % 60)m"
+    }
+}
+
+public struct LaneSegment: Hashable, Sendable {
+    public var start: Date
+    public var end: Date
+    /// The window title with the most time inside the segment.
+    public var title: String?
+
+    public var duration: TimeInterval { end.timeIntervalSince(start) }
+}
+
+public struct AppLane: Identifiable, Hashable, Sendable {
+    public static let otherBundleID = "other"
+
+    public var bundleID: String
+    public var appName: String
+    public var seconds: TimeInterval
+    public var segments: [LaneSegment]
+
+    public var id: String { bundleID }
+    public var isOther: Bool { bundleID == Self.otherBundleID }
+}
+
+extension Timeline {
+    public static func withAppUsage(_ blocks: [ActivityBlock], from spans: [ActivitySpan]) -> [ActivityBlock] {
+        blocks.map { block in
+            var block = block
+            block.appUsage = appUsage(from: spans, within: DateInterval(start: block.start, end: block.end)).filter { $0.seconds >= 1 }
+            return block
+        }
+    }
+
+    /// One lane per top app plus an "Other" lane, with spans closer than `mergeGap` joined so quick switches stay readable.
+    public static func lanes(from spans: [ActivitySpan], within interval: DateInterval, maxLanes: Int = 6, mergeGap: TimeInterval = 30) -> [AppLane] {
+        let usage = appUsage(from: spans, within: interval)
+        let topApps = Set(usage.prefix(maxLanes).map(\.bundleID))
+        var lanes = usage.prefix(maxLanes).map { app in
+            AppLane(
+                bundleID: app.bundleID, appName: app.appName, seconds: app.seconds,
+                segments: mergedSegments(spans.filter { $0.context.bundleID == app.bundleID }, within: interval, mergeGap: mergeGap)
+            )
+        }
+        let otherSpans = spans.filter { !topApps.contains($0.context.bundleID) }
+        let otherSeconds = usage.dropFirst(maxLanes).reduce(0) { $0 + $1.seconds }
+        if otherSeconds > 0 {
+            let labelled = otherSpans.map { span in
+                var span = span
+                span.context.windowTitle = span.context.appName
+                return span
+            }
+            lanes.append(AppLane(
+                bundleID: AppLane.otherBundleID, appName: "Other", seconds: otherSeconds,
+                segments: mergedSegments(labelled, within: interval, mergeGap: mergeGap)
+            ))
+        }
+        return lanes
+    }
+
+    /// The hours that contain any activity, so the lanes don't stretch over an empty night.
+    public static func activeHours(of spans: [ActivitySpan], within interval: DateInterval, calendar: Calendar = .current) -> DateInterval? {
+        let clipped = spans.compactMap { span -> DateInterval? in
+            let start = max(span.start, interval.start), end = min(span.end, interval.end)
+            return end > start ? DateInterval(start: start, end: end) : nil
+        }
+        guard let first = clipped.map(\.start).min(), let last = clipped.map(\.end).max() else { return nil }
+        let start = calendar.dateInterval(of: .hour, for: first)!.start
+        let lastHour = calendar.dateInterval(of: .hour, for: last)!
+        let end = last == lastHour.start ? last : lastHour.end
+        return DateInterval(start: start, end: min(max(end, start.addingTimeInterval(3600)), interval.end))
+    }
+
+    private static func mergedSegments(_ spans: [ActivitySpan], within interval: DateInterval, mergeGap: TimeInterval) -> [LaneSegment] {
+        var segments: [LaneSegment] = []
+        var titleSeconds: [String: TimeInterval] = [:]
+
+        func closeSegment() {
+            guard !segments.isEmpty else { return }
+            segments[segments.count - 1].title = titleSeconds.max { $0.value < $1.value }?.key
+            titleSeconds.removeAll()
+        }
+
+        for span in spans.sorted(by: { $0.start < $1.start }) {
+            let start = max(span.start, interval.start), end = min(span.end, interval.end)
+            guard end > start else { continue }
+            if let last = segments.last, start.timeIntervalSince(last.end) <= mergeGap {
+                segments[segments.count - 1].end = max(last.end, end)
+            } else {
+                closeSegment()
+                segments.append(LaneSegment(start: start, end: end, title: nil))
+            }
+            if let title = span.context.windowTitle {
+                titleSeconds[title, default: 0] += end.timeIntervalSince(start)
+            }
+        }
+        closeSegment()
+        return segments
+    }
+
+    public static func formatCompactDuration(_ seconds: TimeInterval) -> String {
+        seconds < 60 ? "\(Int(seconds.rounded()))s" : formatDuration(seconds)
     }
 }

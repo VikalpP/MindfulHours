@@ -2,19 +2,45 @@ import AppKit
 import ScreenCaptureKit
 import SwiftUI
 
-/// `MindfulHours --snapshot-settings <file.png> [--appearance light|dark] [--no-frame]`
+/// `MindfulHours --snapshot-settings|--snapshot-timeline <file.png> [--appearance light|dark] [--no-frame]`
 struct SnapshotRequest {
+    enum Target {
+        case settings
+        case timeline
+
+        var title: String {
+            switch self {
+            case .settings: "MindfulHours Settings"
+            case .timeline: "Activity Timeline"
+            }
+        }
+
+        var width: CGFloat {
+            switch self {
+            case .settings: 600
+            case .timeline: 1040
+            }
+        }
+    }
+
+    let target: Target
     let outputPath: String
     let appearance: NSAppearance.Name?
     let includesWindowFrame: Bool
-    let width: CGFloat = 600
 
     init?(arguments: [String]) {
         func value(after flag: String) -> String? {
             arguments.firstIndex(of: flag).flatMap { arguments.indices.contains($0 + 1) ? arguments[$0 + 1] : nil }
         }
-        guard let path = value(after: "--snapshot-settings") else { return nil }
-        outputPath = (path as NSString).expandingTildeInPath
+        if let path = value(after: "--snapshot-settings") {
+            target = .settings
+            outputPath = (path as NSString).expandingTildeInPath
+        } else if let path = value(after: "--snapshot-timeline") {
+            target = .timeline
+            outputPath = (path as NSString).expandingTildeInPath
+        } else {
+            return nil
+        }
         appearance = switch value(after: "--appearance") {
         case "dark": .darkAqua
         case "light": .aqua
@@ -29,22 +55,27 @@ enum SnapshotError: Error {
     case encodingFailed
 }
 
-/// Renders the whole Settings form at its full content height, which the system screenshot tool can't do for a
-/// scrolling window. With the frame, the window server's own title bar, corners and shadow are captured, matching
-/// a ⌘⇧4-Space window screenshot.
+/// Renders a window at its full content height, which the system screenshot tool can't do for a scrolling window.
+/// With the frame, the window server's own title bar, toolbar, corners and shadow are captured, matching a
+/// ⌘⇧4-Space window screenshot.
 @MainActor
-enum SettingsSnapshot {
+enum AppWindowSnapshot {
     static func render(model: AppModel, request: SnapshotRequest) async throws {
-        let hosting = NSHostingView(rootView: SettingsView(model: model))
+        let controller = switch request.target {
+        case .settings: fixedSizeHost(SettingsView(model: model))
+        case .timeline: fixedSizeHost(TimelineView(model: model, recorder: model.recorder))
+        }
         let window = UnconstrainedWindow(
-            contentRect: NSRect(x: 0, y: 0, width: request.width, height: 2_000),
+            contentRect: NSRect(x: 0, y: 0, width: request.target.width, height: 2_000),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered, defer: false
         )
-        window.title = "MindfulHours Settings"
+        window.contentViewController = controller
+        window.title = request.target.title
         window.isReleasedWhenClosed = false
         window.appearance = request.appearance.flatMap(NSAppearance.init(named:))
-        window.contentView = hosting
+        window.setContentSize(NSSize(width: request.target.width, height: 2_000))
+        let hosting = controller.view
         // ScreenCaptureKit only captures windows that touch a display, so leave a 1-point sliver at the right edge;
         // ignoring the global clip then captures the rest of the window that hangs off-screen.
         let screen = NSScreen.main?.frame ?? .zero
@@ -56,7 +87,7 @@ enum SettingsSnapshot {
 
         if let scrollView = hosting.firstDescendant(ofType: NSScrollView.self), let document = scrollView.documentView {
             let insets = scrollView.contentInsets
-            window.setContentSize(NSSize(width: request.width, height: ceil(document.frame.height + insets.top + insets.bottom)))
+            window.setContentSize(NSSize(width: request.target.width, height: ceil(document.frame.height + insets.top + insets.bottom)))
             await settle(for: 0.5)
         }
 
@@ -65,6 +96,13 @@ enum SettingsSnapshot {
             throw SnapshotError.encodingFailed
         }
         try png.write(to: URL(fileURLWithPath: request.outputPath))
+    }
+
+    /// Without this the controller resizes the window to the view's ideal size instead of the full-height size set here.
+    private static func fixedSizeHost<V: View>(_ view: V) -> NSViewController {
+        let controller = NSHostingController(rootView: view)
+        controller.sizingOptions = []
+        return controller
     }
 
     private static func capture(_ window: NSWindow, includingFrame: Bool) async throws -> CGImage {

@@ -73,7 +73,7 @@ struct UsageRow: View {
                 HStack {
                     Text(name).lineLimit(1)
                     Spacer()
-                    Text(Timeline.formatDuration(seconds)).foregroundStyle(.secondary).monospacedDigit()
+                    Text(Timeline.formatCompactDuration(seconds)).foregroundStyle(.secondary).monospacedDigit()
                 }
                 .font(.callout)
                 GeometryReader { proxy in

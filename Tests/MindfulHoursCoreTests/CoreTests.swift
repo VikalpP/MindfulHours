@@ -205,3 +205,57 @@ private func temporaryStore() throws -> ActivityStore {
         #expect(image.distance(to: flipped) > 40)
     }
 }
+
+@Suite struct MultiAppTimelineTests {
+    private let day = DateInterval(start: t0, duration: 86_400)
+    private let slack = ActivityContext(bundleID: "com.tinyspeck.slackmacgap", appName: "Slack", windowTitle: "#eng")
+
+    private func span(_ context: ActivityContext, _ from: TimeInterval, _ to: TimeInterval, title: String? = nil) -> ActivitySpan {
+        var context = context
+        if let title { context.windowTitle = title }
+        return ActivitySpan(id: 0, start: t0.addingTimeInterval(from), end: t0.addingTimeInterval(to), context: context)
+    }
+
+    @Test func blocksListEveryAppUsedDuringThemFromSpans() {
+        let blocks = Timeline.withAppUsage(
+            Timeline.blocks(from: [insight(0, task: "Fix bug"), insight(1, task: "Fix bug")]),
+            from: [span(editor, 0, 70), span(browser, 70, 100), span(editor, 100, 130), span(slack, 200, 260)]
+        )
+        #expect(blocks[0].appUsage.map(\.appName) == ["Code", "Chrome"])
+        #expect(blocks[0].appUsage.map(\.seconds) == [90, 30])
+    }
+
+    @Test func lanesMergeQuickSwitchesAndKeepLongestTitle() {
+        let spans = [
+            span(editor, 0, 50, title: "a.swift"), span(browser, 50, 60), span(editor, 60, 200, title: "b.swift"),
+            span(editor, 500, 520, title: "c.swift"),
+        ]
+        let lanes = Timeline.lanes(from: spans, within: day, mergeGap: 30)
+        let code = lanes.first { $0.appName == "Code" }!
+        #expect(code.segments.count == 2)
+        #expect(code.segments[0].start == t0 && code.segments[0].end == t0.addingTimeInterval(200))
+        #expect(code.segments[0].title == "b.swift")
+        #expect(lanes.map(\.appName) == ["Code", "Chrome"])
+    }
+
+    @Test func extraAppsCollapseIntoOtherLane() {
+        let spans = [span(editor, 0, 300), span(browser, 300, 400), span(slack, 400, 420)]
+        let lanes = Timeline.lanes(from: spans, within: day, maxLanes: 2)
+        #expect(lanes.map(\.appName) == ["Code", "Chrome", "Other"])
+        #expect(lanes.last?.seconds == 20)
+        #expect(lanes.last?.segments.first?.title == "Slack")
+    }
+
+    @Test func activeHoursSnapToWholeHours() {
+        let calendar = Calendar(identifier: .gregorian)
+        let hours = Timeline.activeHours(of: [span(editor, 600, 4000)], within: day, calendar: calendar)!
+        #expect(calendar.component(.minute, from: hours.start) == 0)
+        #expect(hours.start <= t0.addingTimeInterval(600) && hours.end >= t0.addingTimeInterval(4000))
+        #expect(hours.duration.truncatingRemainder(dividingBy: 3600) == 0)
+    }
+
+    @Test func compactDurationShowsSecondsUnderAMinute() {
+        #expect(Timeline.formatCompactDuration(42) == "42s")
+        #expect(Timeline.formatCompactDuration(8 * 60) == "8m")
+    }
+}

@@ -30,7 +30,7 @@ The app works without AI: minutes are then recorded from app, window title and U
 | `Tests/MindfulHoursCoreTests` | Swift Testing suites for the core |
 | `scripts/` | App bundling, release packaging, icon generation, proxy setup |
 
-To capture the whole Settings window at full height (e.g. for docs), run:
+To capture the whole Settings or Timeline window at full height (e.g. for docs), run (use `--snapshot-timeline` for the Timeline):
 
 ```sh
 open -n -W /Applications/MindfulHours.app --args --snapshot-settings ~/Desktop/settings.png --appearance light

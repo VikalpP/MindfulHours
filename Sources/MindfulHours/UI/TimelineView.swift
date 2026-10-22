@@ -17,6 +17,11 @@ struct TimelineView: View {
                 VStack(alignment: .leading, spacing: 16) {
                     if let activity {
                         summaryCard(activity)
+                        if let hours = activity.laneHours, !activity.lanes.isEmpty {
+                            AppLanesView(hours: hours, blocks: activity.blocks, lanes: activity.lanes)
+                                .padding(14)
+                                .background(.quaternary.opacity(0.3), in: RoundedRectangle(cornerRadius: 10))
+                        }
                         if activity.blocks.isEmpty {
                             ContentUnavailableView("Nothing recorded", systemImage: "clock", description: Text("Activity shows up here minute by minute."))
                                 .padding(.top, 60)
@@ -176,10 +181,32 @@ private struct BlockRow: View {
                     Button(isExpanded ? "Show less" : "+\(block.summaries.count - 3) more") { isExpanded.toggle() }
                         .buttonStyle(.link).font(.caption)
                 }
-                Text(block.apps.joined(separator: " · ")).font(.caption).foregroundStyle(.tertiary)
+                appChips
             }
             Spacer(minLength: 0)
         }
         .padding(.vertical, 4)
+    }
+
+    @ViewBuilder private var appChips: some View {
+        if block.appUsage.isEmpty {
+            Text(block.apps.joined(separator: " · ")).font(.caption).foregroundStyle(.tertiary)
+        } else {
+            HStack(spacing: 10) {
+                ForEach(block.appUsage.prefix(4)) { usage in
+                    HStack(spacing: 4) {
+                        AppIconView(bundleID: usage.bundleID, size: 12)
+                        Text("\(usage.appName) \(Timeline.formatCompactDuration(usage.seconds))")
+                    }
+                }
+                if block.appUsage.count > 4 {
+                    Text("+\(block.appUsage.count - 4) more")
+                        .help(block.appUsage.dropFirst(4).map { "\($0.appName) \(Timeline.formatCompactDuration($0.seconds))" }.joined(separator: ", "))
+                }
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+        }
     }
 }

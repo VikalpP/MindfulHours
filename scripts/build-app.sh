@@ -54,6 +54,8 @@ echo "Built $APP ($(lipo -archs "$APP/Contents/MacOS/MindfulHours"); signed with
 
 if [[ "$INSTALL" == true ]]; then
   pkill -x MindfulHours || true
+  # Relaunching while the old instance is still exiting makes `open` fail with error -600.
+  for _ in {1..50}; do pgrep -x MindfulHours >/dev/null || break; sleep 0.1; done
   rm -rf "$HOME/Applications/MindfulHours.app"
   rm -rf "/Applications/MindfulHours.app"
   cp -R "$APP" /Applications/

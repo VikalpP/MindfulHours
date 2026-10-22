@@ -98,7 +98,7 @@ It binds the proxy to `127.0.0.1`, generates a local API key, and picks `claude-
 ## Using it
 
 - **Menu bar** — what you're doing now, today's active time and categories, recent blocks, pause for 15 min / 1 h / until resumed. A shield icon means the current window is protected.
-- **Timeline window** — every block of the day with its minute-level details, time per app and category, **Summarize Day**, **Copy Markdown**.
+- **Timeline window** — app lanes showing how you moved between apps across the day, then every task block with its minute-level details and the apps used in it, plus time per app and category, **Summarize Day** and **Copy Markdown**.
 - **Settings** — model provider with connection test, screenshot and text-scan toggles, privacy rules, skipped-screenshot log, idle threshold, launch at login, delete all data.
 
 ## Contributing
