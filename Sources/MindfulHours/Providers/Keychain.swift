@@ -24,8 +24,7 @@ enum Keychain {
         }
     }
 
-    @discardableResult
-    static func write(_ data: Data, account: String) -> Bool {
+    static func write(_ data: Data, account: String) {
         let update = [kSecValueData as String: data] as CFDictionary
         var status = SecItemUpdate(query(account: account) as CFDictionary, update)
         if status == errSecItemNotFound {
@@ -37,7 +36,6 @@ enum Keychain {
         if status != errSecSuccess {
             NSLog("MindfulHours: keychain write failed: \(status)")
         }
-        return status == errSecSuccess
     }
 
     static func delete(account: String) {

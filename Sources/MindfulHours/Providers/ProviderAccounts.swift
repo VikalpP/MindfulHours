@@ -19,7 +19,7 @@ final class ProviderAccounts: ObservableObject {
     private var signInTask: Task<Void, Never>?
     private var chatGPTRefresh: Task<ChatGPTSession, Error>?
 
-    init(defaults: UserDefaults = .standard) {
+    init() {
         do {
             let stored = try Keychain.read(account: Self.keychainAccount)
             credentials = stored.flatMap { try? JSONDecoder().decode(Credentials.self, from: $0) } ?? Credentials()
@@ -27,10 +27,6 @@ final class ProviderAccounts: ObservableObject {
         } catch {
             credentials = Credentials()
             canSave = false
-        }
-        if let handedOverKey = defaults.string(forKey: SettingsKey.customAPIKeyHandoff) {
-            credentials.apiKeys[AIProvider.custom.rawValue] = handedOverKey.trimmingCharacters(in: .whitespacesAndNewlines)
-            if save() { defaults.removeObject(forKey: SettingsKey.customAPIKeyHandoff) }
         }
     }
 
@@ -176,10 +172,9 @@ final class ProviderAccounts: ObservableObject {
         }
     }
 
-    @discardableResult
-    private func save() -> Bool {
-        guard canSave, let data = try? JSONEncoder().encode(credentials) else { return false }
-        return Keychain.write(data, account: Self.keychainAccount)
+    private func save() {
+        guard canSave, let data = try? JSONEncoder().encode(credentials) else { return }
+        Keychain.write(data, account: Self.keychainAccount)
     }
 
     /// Stable per Mac, as Sign in with ChatGPT requires; not a secret.

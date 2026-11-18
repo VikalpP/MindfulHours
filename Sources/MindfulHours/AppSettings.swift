@@ -6,8 +6,7 @@ enum SettingsKey {
     static let screenshotsEnabled = "screenshotsEnabled"
     static let aiProvider = ProviderSelection.providerKey
     static let onDeviceBackupProvider = "onDeviceBackupProvider"
-    static let customBaseURL = ProviderSelection.customBaseURLKey
-    static let customAPIKeyHandoff = ProviderSelection.customAPIKeyHandoffKey
+    static let customBaseURL = "customBaseURL"
     static let chatGPTHostID = "chatGPTHostID"
     static let idleThresholdSeconds = "idleThresholdSeconds"
     static let sampleIntervalSeconds = "sampleIntervalSeconds"
@@ -18,7 +17,7 @@ enum SettingsKey {
     static let protectsPrivateWindows = "protectsPrivateWindows"
     static let scansScreenshotText = "scansScreenshotText"
 
-    static func model(for provider: AIProvider) -> String { ProviderSelection.modelKey(for: provider) }
+    static func model(for provider: AIProvider) -> String { "model.\(provider.rawValue)" }
 }
 
 enum SettingsDefault {
@@ -58,7 +57,6 @@ struct AppSettings: Sendable {
     var privacy: PrivacyRules
     var scansScreenshotText: Bool
 
-    /// Run after `ProviderSelection` migrations, which must see only persisted values.
     static func registerDefaults(in defaults: UserDefaults = .standard) {
         defaults.register(defaults: Dictionary(uniqueKeysWithValues: AIProvider.allCases.map { (SettingsKey.model(for: $0), $0.defaultModel) }))
         defaults.register(defaults: [
@@ -77,7 +75,7 @@ struct AppSettings: Sendable {
     }
 
     static func load(from defaults: UserDefaults = .standard) -> AppSettings {
-        let provider = defaults.string(forKey: SettingsKey.aiProvider).flatMap(AIProvider.init(rawValue:)) ?? SettingsDefault.aiProvider
+        let provider = ProviderSelection.provider(in: defaults, onDevice: AppleIntelligence.availability)
         let backup = defaults.string(forKey: SettingsKey.onDeviceBackupProvider).flatMap(AIProvider.init(rawValue:)).flatMap { $0.isOnDevice ? nil : $0 }
         let customBaseURL = defaults.string(forKey: SettingsKey.customBaseURL)?.trimmingCharacters(in: .whitespaces)
         let sampleInterval = min(max(defaults.double(forKey: SettingsKey.sampleIntervalSeconds), 1), 60)

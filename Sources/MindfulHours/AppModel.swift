@@ -35,16 +35,13 @@ final class AppModel: ObservableObject {
     @Published private(set) var permissions = PermissionState.current
 
     init() {
-        ProviderSelection.migrateLegacyProxySettings(in: .standard)
-        let accounts = ProviderAccounts()
-        ProviderSelection.keepChatGPTIfInUse(in: .standard, hasChatGPTSession: accounts.account(for: .chatGPT) != nil)
         AppSettings.registerDefaults()
         do {
             store = try ActivityStore()
         } catch {
             fatalError("MindfulHours cannot open its database at \(ActivityStore.defaultURL.path): \(error)")
         }
-        self.accounts = accounts
+        accounts = ProviderAccounts()
         recorder = ActivityRecorder(store: store, accounts: accounts)
     }
 

@@ -13,73 +13,39 @@ private func withScratchDefaults<T>(_ body: (UserDefaults) async throws -> T) as
     return try await body(UserDefaults(suiteName: path)!)
 }
 
-/// What the app does at launch: migrate, then fall back to the registered default when nothing is persisted.
-/// (Registered defaults are process-wide, so tests mustn't register them.) `inspect` sees the defaults afterwards.
-private func launch(
-    persisted: [String: String] = [:],
-    hasChatGPTSession: Bool = false,
-    onDevice: OnDeviceAvailability = .available,
-    inspect: (UserDefaults) -> Void = { _ in }
-) async -> AIProvider {
+/// Registered defaults are process-wide, so tests mustn't register them; scratch defaults hold only what's persisted.
+private func selectedProvider(persisted: [String: String] = [:], onDevice: OnDeviceAvailability = .available) async -> AIProvider {
     await withScratchDefaults { defaults in
         for (key, value) in persisted { defaults.set(value, forKey: key) }
-        ProviderSelection.migrateLegacyProxySettings(in: defaults)
-        ProviderSelection.keepChatGPTIfInUse(in: defaults, hasChatGPTSession: hasChatGPTSession)
-        inspect(defaults)
-        return defaults.string(forKey: ProviderSelection.providerKey).flatMap(AIProvider.init(rawValue:))
-            ?? ProviderSelection.defaultProvider(onDevice: onDevice)
+        return ProviderSelection.provider(in: defaults, onDevice: onDevice)
     }
 }
 
 @Suite struct ProviderSelectionTests {
-    @Test func freshInstallDefaultsToAppleIntelligenceWithoutPersistingIt() async {
-        let provider = await launch { #expect($0.object(forKey: ProviderSelection.providerKey) == nil) }
-        #expect(provider == .appleIntelligence)
+    @Test func freshInstallDefaultsToAppleIntelligence() async {
+        #expect(await selectedProvider() == .appleIntelligence)
     }
 
     @Test func fixableUnavailabilityStillDefaultsToAppleIntelligence() async {
-        #expect(await launch(onDevice: .unavailable(.appleIntelligenceNotEnabled)) == .appleIntelligence)
-        #expect(await launch(onDevice: .unavailable(.modelNotReady)) == .appleIntelligence)
+        #expect(await selectedProvider(onDevice: .unavailable(.appleIntelligenceNotEnabled)) == .appleIntelligence)
+        #expect(await selectedProvider(onDevice: .unavailable(.modelNotReady)) == .appleIntelligence)
     }
 
     @Test func macsThatCanNeverRunItDefaultToChatGPT() async {
-        #expect(await launch(onDevice: .unavailable(.deviceNotEligible)) == .chatGPT)
-        #expect(await launch(onDevice: .unavailable(.requiresNewerMacOS)) == .chatGPT)
-        #expect(await launch(onDevice: .unavailable(.notInThisBuild)) == .chatGPT)
+        #expect(await selectedProvider(onDevice: .unavailable(.deviceNotEligible)) == .chatGPT)
+        #expect(await selectedProvider(onDevice: .unavailable(.requiresNewerMacOS)) == .chatGPT)
+        #expect(await selectedProvider(onDevice: .unavailable(.notInThisBuild)) == .chatGPT)
     }
 
     @Test func explicitChoiceIsKept() async {
         for provider in AIProvider.allCases {
-            #expect(await launch(persisted: [ProviderSelection.providerKey: provider.rawValue], hasChatGPTSession: true) == provider)
+            #expect(await selectedProvider(persisted: [ProviderSelection.providerKey: provider.rawValue]) == provider)
+            #expect(await selectedProvider(persisted: [ProviderSelection.providerKey: provider.rawValue], onDevice: .unavailable(.deviceNotEligible)) == provider)
         }
     }
 
-    @Test func v010ProxySettingsBecomeCustomWithOldDefaults() async {
-        let provider = await launch(persisted: ["proxyAPIKey": "sk-local"]) { defaults in
-            #expect(defaults.string(forKey: ProviderSelection.customBaseURLKey) == "http://127.0.0.1:8317/v1")
-            #expect(defaults.string(forKey: ProviderSelection.modelKey(for: .custom)) == "claude-haiku-5-5")
-            #expect(defaults.string(forKey: ProviderSelection.customAPIKeyHandoffKey) == "sk-local")
-            #expect(defaults.object(forKey: "proxyAPIKey") == nil)
-        }
-        #expect(provider == .custom)
-    }
-
-    @Test func v010ChangedValuesAreCarriedOver() async {
-        let provider = await launch(persisted: ["proxyBaseURL": "http://10.0.0.2:9000/v1", "model": "gpt-x"]) { defaults in
-            #expect(defaults.string(forKey: ProviderSelection.customBaseURLKey) == "http://10.0.0.2:9000/v1")
-            #expect(defaults.string(forKey: ProviderSelection.modelKey(for: .custom)) == "gpt-x")
-            #expect(defaults.string(forKey: ProviderSelection.customAPIKeyHandoffKey) == nil)
-        }
-        #expect(provider == .custom)
-    }
-
-    @Test func chatGPTInUseUnderTheOldDefaultIsKept() async {
-        #expect(await launch(hasChatGPTSession: true) == .chatGPT)
-        #expect(await launch(persisted: [ProviderSelection.modelKey(for: .chatGPT): "gpt-6.1-mini"]) == .chatGPT)
-    }
-
-    @Test func otherProviderSetupWithoutChoosingDoesNotOverrideDefault() async {
-        #expect(await launch(persisted: [ProviderSelection.modelKey(for: .claude): "claude-haiku-5-5"]) == .appleIntelligence)
+    @Test func providerSetupWithoutChoosingDoesNotOverrideDefault() async {
+        #expect(await selectedProvider(persisted: ["model.chatGPT": "gpt-6.1-mini", "model.claude": "claude-haiku-5-5"]) == .appleIntelligence)
     }
 
     @Test func pickerOrder() {
