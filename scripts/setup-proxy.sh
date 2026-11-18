@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Installs CLIProxyAPI, signs in with your Claude subscription, and points MindfulHours at it.
+# Optional, for the Custom provider: installs CLIProxyAPI, signs in with your Claude subscription, and points
+# MindfulHours at it. Most people should pick a provider in MindfulHours Settings instead.
 # Usage: scripts/setup-proxy.sh [--relogin]
 set -euo pipefail
 
@@ -52,7 +53,15 @@ if [[ -z "$MODEL" ]]; then
   exit 1
 fi
 
-defaults write "$APP_DOMAIN" proxyBaseURL "$BASE_URL"
-defaults write "$APP_DOMAIN" proxyAPIKey "$KEY"
-defaults write "$APP_DOMAIN" model "$MODEL"
+defaults write "$APP_DOMAIN" aiProvider custom
+defaults write "$APP_DOMAIN" customBaseURL "$BASE_URL"
+defaults write "$APP_DOMAIN" model.custom "$MODEL"
+# MindfulHours moves this key into the Keychain at launch.
+defaults write "$APP_DOMAIN" customAPIKey "$KEY"
+
+if pgrep -xq MindfulHours; then
+  osascript -e 'quit app "MindfulHours"'
+  while pgrep -xq MindfulHours; do sleep 0.2; done
+  open -a MindfulHours
+fi
 echo "MindfulHours now uses $MODEL via $BASE_URL"

@@ -31,6 +31,7 @@ struct DayActivity {
 final class AppModel: ObservableObject {
     let store: ActivityStore
     let recorder: ActivityRecorder
+    let accounts: ProviderAccounts
     @Published private(set) var permissions = PermissionState.current
 
     init() {
@@ -40,7 +41,8 @@ final class AppModel: ObservableObject {
         } catch {
             fatalError("MindfulHours cannot open its database at \(ActivityStore.defaultURL.path): \(error)")
         }
-        recorder = ActivityRecorder(store: store)
+        accounts = ProviderAccounts()
+        recorder = ActivityRecorder(store: store, accounts: accounts)
     }
 
     func startTracking() {
@@ -86,7 +88,7 @@ final class AppModel: ObservableObject {
     }
 
     func summarize(_ activity: DayActivity) async throws -> DaySummary {
-        guard let llm = AppSettings.load().llm else { throw LLMError.notConfigured }
+        let llm = try await accounts.configuration(for: AppSettings.load())
         let text = try await LLMClient(configuration: llm).complete(
             system: Prompts.daySystem,
             user: Prompts.dayUser(day: activity.dayKey, blocks: activity.blocks, appUsage: activity.appUsage),

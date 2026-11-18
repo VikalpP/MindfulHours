@@ -32,6 +32,7 @@ final class ActivityRecorder: ObservableObject {
     @Published private(set) var isTextScanReady = false
 
     let store: ActivityStore
+    private let accounts: ProviderAccounts
     private let probe = ContextProbe()
     private let presence = PresenceMonitor()
 
@@ -51,8 +52,9 @@ final class ActivityRecorder: ObservableObject {
     private var retryAfter = Date.distantPast
     private var loop: Task<Void, Never>?
 
-    init(store: ActivityStore) {
+    init(store: ActivityStore, accounts: ProviderAccounts) {
         self.store = store
+        self.accounts = accounts
     }
 
     func start() {
@@ -74,7 +76,7 @@ final class ActivityRecorder: ObservableObject {
         await WindowCapture.warmUpTextRecognition()
         isTextScanReady = true
         let settings = AppSettings.load()
-        analysisStatus = settings.aiEnabled && settings.llm != nil ? .ready : .disabled
+        analysisStatus = settings.aiEnabled && accounts.isReady(settings) ? .ready : .disabled
         guard let front = probe.frontmostApp(), !PresenceMonitor.isLockScreen(front.context.bundleID) else { return }
         let verdict = settings.privacy.evaluate(front.context, signals: front.signals)
         trackingStatus = .tracking
@@ -96,7 +98,7 @@ final class ActivityRecorder: ObservableObject {
 
     private func tick(at now: Date) {
         let settings = AppSettings.load()
-        if !settings.aiEnabled || settings.llm == nil {
+        if !settings.aiEnabled || !accounts.isReady(settings) {
             analysisStatus = .disabled
         } else if analysisStatus == .disabled {
             analysisStatus = .ready
@@ -259,7 +261,7 @@ final class ActivityRecorder: ObservableObject {
         }
 
         let canUseAI = settings.aiEnabled && !isAnalyzing && Date.now >= retryAfter
-        guard canUseAI, let llm = settings.llm else {
+        guard canUseAI, accounts.isReady(settings) else {
             await save(.fromMetadata(minuteStart: minute, context: context, previous: recent.last))
             return
         }
@@ -278,6 +280,7 @@ final class ActivityRecorder: ObservableObject {
         defer { isAnalyzing = false }
 
         do {
+            let llm = try await accounts.configuration(for: settings)
             let reply = try await LLMClient(configuration: llm).complete(
                 system: Prompts.minuteSystem,
                 user: Prompts.minuteUser(observation),
