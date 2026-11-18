@@ -10,11 +10,14 @@ public struct DaySummarizer: Sendable {
     public let promptBudget: Int
     private let tokenCount: TokenCount
     private let complete: Complete
+    private let writeSummary: Complete
 
-    public init(promptBudget: Int, tokenCount: @escaping TokenCount, complete: @escaping Complete) {
+    /// `writeSummary` makes the final call (default: `complete`), so it can enforce the summary's format.
+    public init(promptBudget: Int, tokenCount: @escaping TokenCount, complete: @escaping Complete, writeSummary: Complete? = nil) {
         self.promptBudget = promptBudget
         self.tokenCount = tokenCount
         self.complete = complete
+        self.writeSummary = writeSummary ?? complete
     }
 
     /// About 3 characters per token: deliberately pessimistic for English so estimated prompts still fit.
@@ -27,7 +30,7 @@ public struct DaySummarizer: Sendable {
         for _ in 0..<Self.maxCondensingRounds {
             let user = Prompts.dayUser(day: day, timeline: timeline, appUsage: appUsage)
             if await tokenCount(Prompts.daySystem + user) <= promptBudget {
-                return try await complete(Prompts.daySystem, user)
+                return try await writeSummary(Prompts.daySystem, user)
             }
             let parts = await split(Array(timeline.dropFirst()), day: day)
             var notes: [String] = []

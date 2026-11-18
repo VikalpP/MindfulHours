@@ -54,7 +54,8 @@ public enum AppleIntelligence {
         let summarizer = DaySummarizer(
             promptBudget: model.contextSize - dayReplyTokens - 200,
             tokenCount: { await tokenCount($0) },
-            complete: { system, user in try await respondText(system: system, user: user, maxTokens: dayReplyTokens) }
+            complete: { system, user in try await respondText(system: system, user: user, maxTokens: dayReplyTokens) },
+            writeSummary: { system, user in try await respondDaySummary(system: system, user: user) }
         )
         return try await summarizer.summarize(day: day, blocks: blocks, appUsage: appUsage)
         #else
@@ -156,7 +157,36 @@ struct OnDeviceMinute {
     }
 }
 
+/// Guided generation keeps the overview / work log / focus layout that the small model drops from free text.
+@available(macOS 26, *)
+@Generable
+struct OnDeviceDaySummary {
+    @Guide(description: "2-3 sentence overview of the day")
+    var overview: String
+    @Guide(description: "Work log entries grouped by project or task, each with approximate time spent", .maximumCount(10))
+    var workLog: [String]
+    @Guide(description: "One or two observations about focus, context switches and interruptions")
+    var focus: String
+
+    var markdown: String {
+        let entries = workLog.map { "- " + $0.trimmingCharacters(in: CharacterSet(charactersIn: "-•* ").union(.whitespacesAndNewlines)) }
+        return ([overview.trimmingCharacters(in: .whitespacesAndNewlines), "", "**Work log**"] + entries + ["", "**Focus**", focus.trimmingCharacters(in: .whitespacesAndNewlines)])
+            .joined(separator: "\n")
+    }
+}
+
 extension AppleIntelligence {
+    @available(macOS 26, *)
+    static func respondDaySummary(system: String, user: String) async throws -> String {
+        let session = LanguageModelSession(model: .default, instructions: system)
+        do {
+            let options = GenerationOptions(temperature: 0.3, maximumResponseTokens: dayReplyTokens)
+            return try await session.respond(to: user, generating: OnDeviceDaySummary.self, options: options).content.markdown
+        } catch {
+            throw classify(error)
+        }
+    }
+
     @available(macOS 26, *)
     static func requireAvailable() throws {
         if case .unavailable(let reason) = availability { throw OnDeviceModelError.unavailable(reason) }

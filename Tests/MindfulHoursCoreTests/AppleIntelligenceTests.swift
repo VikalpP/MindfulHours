@@ -2,84 +2,84 @@ import CoreGraphics
 import Foundation
 import ImageIO
 import Testing
+import CoreText
 import UniformTypeIdentifiers
 @testable import MindfulHoursCore
 
-private func scratchDefaults() -> UserDefaults {
-    let name = "MindfulHoursTests-\(UUID())"
-    let defaults = UserDefaults(suiteName: name)!
-    defaults.removePersistentDomain(forName: name)
-    return defaults
+/// A suite named by an absolute path is a plain plist there, so tests never write to ~/Library/Preferences.
+private func withScratchDefaults<T>(_ body: (UserDefaults) async throws -> T) async rethrows -> T {
+    let path = FileManager.default.temporaryDirectory.appending(path: "MindfulHoursTests-\(UUID()).plist").path
+    defer { try? FileManager.default.removeItem(atPath: path) }
+    return try await body(UserDefaults(suiteName: path)!)
 }
 
 /// What the app does at launch: migrate, then fall back to the registered default when nothing is persisted.
-/// (Registered defaults are process-wide, so tests mustn't register them.)
-private func launch(_ defaults: UserDefaults, hasChatGPTSession: Bool = false, onDevice: OnDeviceAvailability = .available) -> AIProvider? {
-    ProviderSelection.migrateLegacyProxySettings(in: defaults)
-    ProviderSelection.keepChatGPTIfInUse(in: defaults, hasChatGPTSession: hasChatGPTSession)
-    return defaults.string(forKey: ProviderSelection.providerKey).flatMap(AIProvider.init(rawValue:))
-        ?? ProviderSelection.defaultProvider(onDevice: onDevice)
+/// (Registered defaults are process-wide, so tests mustn't register them.) `inspect` sees the defaults afterwards.
+private func launch(
+    persisted: [String: String] = [:],
+    hasChatGPTSession: Bool = false,
+    onDevice: OnDeviceAvailability = .available,
+    inspect: (UserDefaults) -> Void = { _ in }
+) async -> AIProvider {
+    await withScratchDefaults { defaults in
+        for (key, value) in persisted { defaults.set(value, forKey: key) }
+        ProviderSelection.migrateLegacyProxySettings(in: defaults)
+        ProviderSelection.keepChatGPTIfInUse(in: defaults, hasChatGPTSession: hasChatGPTSession)
+        inspect(defaults)
+        return defaults.string(forKey: ProviderSelection.providerKey).flatMap(AIProvider.init(rawValue:))
+            ?? ProviderSelection.defaultProvider(onDevice: onDevice)
+    }
 }
 
 @Suite struct ProviderSelectionTests {
-    @Test func freshInstallDefaultsToAppleIntelligenceWithoutPersistingIt() {
-        let defaults = scratchDefaults()
-        #expect(launch(defaults) == .appleIntelligence)
-        #expect(defaults.object(forKey: ProviderSelection.providerKey) == nil)
+    @Test func freshInstallDefaultsToAppleIntelligenceWithoutPersistingIt() async {
+        let provider = await launch { #expect($0.object(forKey: ProviderSelection.providerKey) == nil) }
+        #expect(provider == .appleIntelligence)
     }
 
-    @Test func fixableUnavailabilityStillDefaultsToAppleIntelligence() {
-        #expect(launch(scratchDefaults(), onDevice: .unavailable(.appleIntelligenceNotEnabled)) == .appleIntelligence)
-        #expect(launch(scratchDefaults(), onDevice: .unavailable(.modelNotReady)) == .appleIntelligence)
+    @Test func fixableUnavailabilityStillDefaultsToAppleIntelligence() async {
+        #expect(await launch(onDevice: .unavailable(.appleIntelligenceNotEnabled)) == .appleIntelligence)
+        #expect(await launch(onDevice: .unavailable(.modelNotReady)) == .appleIntelligence)
     }
 
-    @Test func macsThatCanNeverRunItDefaultToChatGPT() {
-        #expect(launch(scratchDefaults(), onDevice: .unavailable(.deviceNotEligible)) == .chatGPT)
-        #expect(launch(scratchDefaults(), onDevice: .unavailable(.requiresNewerMacOS)) == .chatGPT)
-        #expect(launch(scratchDefaults(), onDevice: .unavailable(.notInThisBuild)) == .chatGPT)
+    @Test func macsThatCanNeverRunItDefaultToChatGPT() async {
+        #expect(await launch(onDevice: .unavailable(.deviceNotEligible)) == .chatGPT)
+        #expect(await launch(onDevice: .unavailable(.requiresNewerMacOS)) == .chatGPT)
+        #expect(await launch(onDevice: .unavailable(.notInThisBuild)) == .chatGPT)
     }
 
-    @Test func explicitChoiceIsKept() {
+    @Test func explicitChoiceIsKept() async {
         for provider in AIProvider.allCases {
-            let defaults = scratchDefaults()
-            defaults.set(provider.rawValue, forKey: ProviderSelection.providerKey)
-            #expect(launch(defaults, hasChatGPTSession: true) == provider)
+            #expect(await launch(persisted: [ProviderSelection.providerKey: provider.rawValue], hasChatGPTSession: true) == provider)
         }
     }
 
-    @Test func v010ProxySettingsBecomeCustomWithOldDefaults() {
-        let defaults = scratchDefaults()
-        defaults.set("sk-local", forKey: "proxyAPIKey")
-        #expect(launch(defaults) == .custom)
-        #expect(defaults.string(forKey: ProviderSelection.customBaseURLKey) == "http://127.0.0.1:8317/v1")
-        #expect(defaults.string(forKey: ProviderSelection.modelKey(for: .custom)) == "claude-haiku-5-5")
-        #expect(defaults.string(forKey: ProviderSelection.customAPIKeyHandoffKey) == "sk-local")
-        #expect(defaults.object(forKey: "proxyAPIKey") == nil)
+    @Test func v010ProxySettingsBecomeCustomWithOldDefaults() async {
+        let provider = await launch(persisted: ["proxyAPIKey": "sk-local"]) { defaults in
+            #expect(defaults.string(forKey: ProviderSelection.customBaseURLKey) == "http://127.0.0.1:8317/v1")
+            #expect(defaults.string(forKey: ProviderSelection.modelKey(for: .custom)) == "claude-haiku-5-5")
+            #expect(defaults.string(forKey: ProviderSelection.customAPIKeyHandoffKey) == "sk-local")
+            #expect(defaults.object(forKey: "proxyAPIKey") == nil)
+        }
+        #expect(provider == .custom)
     }
 
-    @Test func v010ChangedValuesAreCarriedOver() {
-        let defaults = scratchDefaults()
-        defaults.set("http://10.0.0.2:9000/v1", forKey: "proxyBaseURL")
-        defaults.set("gpt-x", forKey: "model")
-        #expect(launch(defaults) == .custom)
-        #expect(defaults.string(forKey: ProviderSelection.customBaseURLKey) == "http://10.0.0.2:9000/v1")
-        #expect(defaults.string(forKey: ProviderSelection.modelKey(for: .custom)) == "gpt-x")
-        #expect(defaults.string(forKey: ProviderSelection.customAPIKeyHandoffKey) == nil)
+    @Test func v010ChangedValuesAreCarriedOver() async {
+        let provider = await launch(persisted: ["proxyBaseURL": "http://10.0.0.2:9000/v1", "model": "gpt-x"]) { defaults in
+            #expect(defaults.string(forKey: ProviderSelection.customBaseURLKey) == "http://10.0.0.2:9000/v1")
+            #expect(defaults.string(forKey: ProviderSelection.modelKey(for: .custom)) == "gpt-x")
+            #expect(defaults.string(forKey: ProviderSelection.customAPIKeyHandoffKey) == nil)
+        }
+        #expect(provider == .custom)
     }
 
-    @Test func chatGPTInUseUnderTheOldDefaultIsKept() {
-        let signedIn = scratchDefaults()
-        #expect(launch(signedIn, hasChatGPTSession: true) == .chatGPT)
-
-        let choseModel = scratchDefaults()
-        choseModel.set("gpt-6.1-mini", forKey: ProviderSelection.modelKey(for: .chatGPT))
-        #expect(launch(choseModel) == .chatGPT)
+    @Test func chatGPTInUseUnderTheOldDefaultIsKept() async {
+        #expect(await launch(hasChatGPTSession: true) == .chatGPT)
+        #expect(await launch(persisted: [ProviderSelection.modelKey(for: .chatGPT): "gpt-6.1-mini"]) == .chatGPT)
     }
 
-    @Test func otherProviderSetupWithoutChoosingDoesNotOverrideDefault() {
-        let defaults = scratchDefaults()
-        defaults.set("claude-haiku-5-5", forKey: ProviderSelection.modelKey(for: .claude))
-        #expect(launch(defaults) == .appleIntelligence)
+    @Test func otherProviderSetupWithoutChoosingDoesNotOverrideDefault() async {
+        #expect(await launch(persisted: [ProviderSelection.modelKey(for: .claude): "claude-haiku-5-5"]) == .appleIntelligence)
     }
 
     @Test func pickerOrder() {
@@ -305,24 +305,89 @@ private actor CallLog {
     }
 }
 
+private func jpeg(drawing lines: [String], width: Int = 1280, height: Int = 800) -> Data {
+    let context = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
+                            space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)!
+    context.setFillColor(CGColor(gray: 1, alpha: 1))
+    context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+    let font = CTFontCreateWithName("Helvetica-Bold" as CFString, 44, nil)
+    for (index, line) in lines.enumerated() {
+        let text = NSAttributedString(string: line, attributes: [NSAttributedString.Key(kCTFontAttributeName as String): font])
+        context.textPosition = CGPoint(x: 40, y: height - 90 - index * 70)
+        CTLineDraw(CTLineCreateWithAttributedString(text), context)
+    }
+    let data = NSMutableData()
+    let destination = CGImageDestinationCreateWithData(data, UTType.jpeg.identifier as CFString, 1, nil)!
+    CGImageDestinationAddImage(destination, context.makeImage()!, nil)
+    CGImageDestinationFinalize(destination)
+    return data as Data
+}
+
+private func history(_ entries: [(app: String, task: String)]) -> [Insight] {
+    entries.enumerated().map { index, entry in
+        Insight(minuteStart: observation.minuteStart.addingTimeInterval(Double(index - entries.count) * 60),
+                context: ActivityContext(bundleID: "test.\(entry.app)", appName: entry.app),
+                summary: "", task: entry.task, project: nil, category: .coding, isReused: false, model: "test")
+    }
+}
+
 /// Calls the real on-device model: `MINDFULHOURS_LIVE_AI=1 swift test --filter LiveAppleIntelligence`. Skipped in CI.
 @Suite(.serialized, .enabled(if: ProcessInfo.processInfo.environment["MINDFULHOURS_LIVE_AI"] != nil && AppleIntelligence.availability.isAvailable))
 struct LiveAppleIntelligenceTests {
     @Test func describesAMinuteFromText() async throws {
-        let description = try await AppleIntelligence.minuteDescriber(visionCache: scratchDefaults()).describe(observation, screenshotJPEG: nil)
+        let description = try await withScratchDefaults { try await AppleIntelligence.minuteDescriber(visionCache: $0).describe(observation, screenshotJPEG: nil) }
         print("Live minute:", description.payload)
         #expect(description.model == AppleIntelligence.modelName && !description.payload.summary.isEmpty)
     }
 
+    @Test func readsTheScreenshotAndCachesVisionSupport() async throws {
+        var minute = observation
+        minute.context = ActivityContext(bundleID: "com.google.Chrome", appName: "Google Chrome", windowTitle: "Pull request", url: "https://github.com/acme/api/pull/42")
+        minute.hasScreenshot = true
+        let screenshot = jpeg(drawing: ["acme/api  Pull request #42", "Fix token refresh in session.ts", "Files changed (3)   Review changes"])
+        let (description, cached) = try await withScratchDefaults { defaults in
+            let description = try await AppleIntelligence.minuteDescriber(visionCache: defaults).describe(minute, screenshotJPEG: screenshot)
+            return (description, defaults.dictionary(forKey: "appleIntelligenceVisionSupport"))
+        }
+        print("Live screenshot minute:", description.payload, "cache:", cached ?? [:])
+        if #available(macOS 27, *) {
+            #expect(cached?["supported"] as? Bool == true)
+        }
+    }
+
+    @Test func doesNotDescribeHistoryForTheCurrentMinute() async throws {
+        var minute = observation
+        minute.context = ActivityContext(bundleID: "com.apple.Terminal", appName: "Terminal", windowTitle: "swift test — MindfulHours — zsh")
+        minute.secondsByApp = [("Terminal", 60)]
+        minute.recentInsights = history([("Google Chrome", "Review PR #12"), ("Google Chrome", "Review PR #12"), ("Google Chrome", "Review PR #12")])
+        let description = try await withScratchDefaults { try await AppleIntelligence.minuteDescriber(visionCache: $0).describe(minute, screenshotJPEG: nil) }
+        print("Live history-leak check:", description.payload)
+        #expect(!description.payload.summary.localizedCaseInsensitiveContains("PR #12"))
+    }
+
+    @Test func givesUnrelatedVideoItsOwnLabel() async throws {
+        var minute = observation
+        minute.context = ActivityContext(bundleID: "com.google.Chrome", appName: "Google Chrome",
+                                         windowTitle: "Stanford CS229: Machine Learning Lecture 1 - YouTube", url: "https://www.youtube.com/watch?v=jGwO_UgTS7I")
+        minute.secondsByApp = [("Google Chrome", 60)]
+        minute.recentInsights = history([("Xcode", "Build fallback router"), ("Xcode", "Build fallback router"), ("Terminal", "Build fallback router")])
+        let description = try await withScratchDefaults { try await AppleIntelligence.minuteDescriber(visionCache: $0).describe(minute, screenshotJPEG: nil) }
+        print("Live label-propagation check:", description.payload)
+        #expect(description.payload.task != "Build fallback router")
+    }
+
     @Test func summarizesALongDayInParts() async throws {
         let t0 = Date(timeIntervalSince1970: 1_800_000_000)
-        let insights = (0..<240).map { index in
+        let apps = ["Xcode", "Safari", "Slack", "Terminal", "Notes"]
+        let insights = (0..<300).map { index in
             Insight(minuteStart: t0.addingTimeInterval(Double(index) * 60),
-                    context: ActivityContext(bundleID: "com.apple.dt.Xcode", appName: index % 2 == 0 ? "Xcode" : "Safari", windowTitle: "File\(index / 10).swift"),
-                    summary: "Editing File\(index / 10).swift to add the on-device fallback router and its tests", task: "Task \(index / 5)",
+                    context: ActivityContext(bundleID: "test.\(index % 5)", appName: apps[index % 5], windowTitle: "Window \(index)"),
+                    summary: "Working through step \(index) of the release checklist, updating file \(index).swift and its tests", task: "Release step \(index / 2)",
                     project: "MindfulHours", category: .coding, isReused: false, model: "test")
         }
-        let summary = try await AppleIntelligence.summarizeDay(day: "2026-11-18", blocks: Timeline.blocks(from: insights), appUsage: [])
+        let blocks = Timeline.blocks(from: insights)
+        #expect(DaySummarizer.estimatedTokens(Prompts.dayUser(day: "2026-11-18", blocks: blocks, appUsage: [])) > 8192)
+        let summary = try await AppleIntelligence.summarizeDay(day: "2026-11-18", blocks: blocks, appUsage: [])
         print("Live day summary:", summary)
         #expect(!summary.isEmpty)
     }
