@@ -15,7 +15,7 @@ concurrency:
 jobs:
   build-and-test:
     name: Build & test
-    runs-on: macos-26
+    runs-on: xcode-27
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
@@ -24,6 +24,8 @@ jobs:
         run: |
           xcodebuild -version
           swift --version
+          # Apple Intelligence screenshot support compiles only with the macOS 27 SDK (Xcode 27, Swift 6.4).
+          xcodebuild -version | awk 'NR == 1 && $2 + 0 < 27 { print "::error::Xcode 27 or later is required"; exit 1 }'
 
       - name: Build
         run: swift build
@@ -33,6 +35,14 @@ jobs:
 
       - name: Build app bundle
         run: scripts/build-app.sh --universal --version "0.0.0-ci" --build-number "${{ github.run_number }}"
+
+      - name: Check FoundationModels is weak-linked (app must launch on macOS 14/15)
+        run: |
+          for arch in arm64 x86_64; do
+            otool -arch "$arch" -l build/MindfulHours.app/Contents/MacOS/MindfulHours \
+              | grep -B2 FoundationModels.framework | grep -q LC_LOAD_WEAK_DYLIB \
+              || { echo "::error::FoundationModels is not weak-linked for $arch"; exit 1; }
+          done
 
       - name: Upload app for manual testing
         uses: actions/upload-artifact@v7

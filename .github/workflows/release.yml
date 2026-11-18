@@ -13,7 +13,7 @@ concurrency:
 jobs:
   release:
     name: Build & publish release
-    runs-on: macos-26
+    runs-on: xcode-27
     timeout-minutes: 45
     env:
       # Optional. Without these, the release is ad-hoc signed and not notarized.
@@ -28,6 +28,13 @@ jobs:
       - name: Resolve version
         run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
 
+      - name: Toolchain
+        run: |
+          xcodebuild -version
+          swift --version
+          # Apple Intelligence screenshot support compiles only with the macOS 27 SDK (Xcode 27, Swift 6.4).
+          xcodebuild -version | awk 'NR == 1 && $2 + 0 < 27 { print "::error::Xcode 27 or later is required"; exit 1 }'
+
       - name: Test
         run: swift test
 
@@ -39,6 +46,14 @@ jobs:
         env:
           CODESIGN_IDENTITY: ${{ env.CODESIGN_IDENTITY || '-' }}
         run: scripts/build-app.sh --universal --version "$VERSION" --build-number "${{ github.run_number }}"
+
+      - name: Check FoundationModels is weak-linked (app must launch on macOS 14/15)
+        run: |
+          for arch in arm64 x86_64; do
+            otool -arch "$arch" -l build/MindfulHours.app/Contents/MacOS/MindfulHours \
+              | grep -B2 FoundationModels.framework | grep -q LC_LOAD_WEAK_DYLIB \
+              || { echo "::error::FoundationModels is not weak-linked for $arch"; exit 1; }
+          done
 
       - name: Notarize and staple
         if: env.DEVELOPER_ID_P12_BASE64 != '' && env.APPLE_ID != ''
