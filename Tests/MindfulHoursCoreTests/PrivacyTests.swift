@@ -20,7 +20,6 @@ private func chrome(title: String = "Docs", url: String) -> ActivityContext {
         #expect(verdict.matchedRule == "chrome://password-manager")
         #expect(verdict.hidesMetadata)
         #expect(!verdict.allowsScreenshot)
-        #expect(!verdict.allowsAI)
     }
 
     @Test func domainRulesMatchSubdomainsAndPathPrefixes() {
@@ -51,7 +50,6 @@ private func chrome(title: String = "Docs", url: String) -> ActivityContext {
             #expect(verdict.reasons == [reason])
             #expect(!verdict.allowsScreenshot)
             #expect(!verdict.hidesMetadata)
-            #expect(verdict.allowsAI)
         }
     }
 

@@ -68,7 +68,6 @@ public struct PrivacyVerdict: Equatable, Sendable {
 
     public var hidesMetadata: Bool { reasons.contains { $0.hidesMetadata } }
     public var allowsScreenshot: Bool { reasons.isEmpty }
-    public var allowsAI: Bool { !hidesMetadata }
     public var sortedReasons: [ProtectionReason] { reasons.sorted() }
 }
 

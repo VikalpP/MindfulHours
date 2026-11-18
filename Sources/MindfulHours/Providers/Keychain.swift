@@ -38,10 +38,6 @@ enum Keychain {
         }
     }
 
-    static func delete(account: String) {
-        SecItemDelete(query(account: account) as CFDictionary)
-    }
-
     private static func query(account: String) -> [String: Any] {
         [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service, kSecAttrAccount as String: account]
     }
