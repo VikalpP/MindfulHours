@@ -18,13 +18,13 @@ scripts/build-app.sh --install   # builds, signs and launches /Applications/Mind
 
 ### AI descriptions (optional)
 
-The app works without AI: minutes are then recorded from app, window title and URL. To get AI descriptions, point Settings at any OpenAI-compatible endpoint, or run `scripts/setup-proxy.sh` to install [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) and sign in with a Claude subscription.
+The app works without AI: minutes are then recorded from app, window title and URL. To get AI descriptions, pick a provider in **Settings › AI provider**. For free local testing, install [Ollama](https://ollama.com) and `ollama pull gemma3`.
 
 ## Project layout
 
 | Path | What lives there |
 |---|---|
-| `Sources/MindfulHoursCore` | Pure, testable logic: SQLite store, timeline grouping, privacy rules, sensitive-text detection, prompts and parsing, LLM client |
+| `Sources/MindfulHoursCore` | Pure, testable logic: SQLite store, timeline grouping, privacy rules, sensitive-text detection, prompts and parsing, LLM client, provider presets and sign-in flows |
 | `Sources/MindfulHours/Tracking` | macOS integration: Accessibility, AppleScript, ScreenCaptureKit, Vision OCR, idle detection, the recording loop |
 | `Sources/MindfulHours/UI` | SwiftUI menu bar, timeline and settings |
 | `Tests/MindfulHoursCoreTests` | Swift Testing suites for the core |
@@ -50,7 +50,7 @@ The app icon, the README header icon and the GitHub social preview are drawn in 
   - Screenshots stay in memory and are never written to disk or logs.
   - Nothing reaches a model when a privacy protection applies, and title/URL are dropped when they themselves are sensitive.
   - When a privacy signal can't be determined, fail closed (withhold the screenshot).
-  - No network calls other than the configured model endpoint.
+  - No network calls other than the chosen AI provider and its sign-in endpoints.
 
 ## Pull requests
 
