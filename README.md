@@ -38,7 +38,7 @@
 Ever reach 6 pm and wonder where the day went? MindfulHours sits in your menu bar and keeps an honest, specific log — not just *"Chrome, 3 h"*, but *"Reviewing PR #42 auth refactor in acme/api"*, *"Debugging token refresh in session.ts"*, *"Watching a Stanford lecture on agents"*. At the end of the day it writes your work log for you.
 
 - **Minute-by-minute timeline** of tasks, grouped into focus blocks with projects and categories
-- **In-app understanding** via an AI model of your choice — sign in with ChatGPT or OpenRouter, add a Claude, OpenAI or Gemini key, or run one locally with Ollama or LM Studio
+- **In-app understanding** with Apple Intelligence, on your Mac and private, by default — or a model of your choice: sign in with ChatGPT or OpenRouter, add a Claude, OpenAI or Gemini key, or run one locally with Ollama or LM Studio
 - **Privacy-first**: password fields, password-manager pages, private windows and on-screen secrets are never captured; screenshots never touch disk
 - **Daily summary** and one-click **Markdown export** for standups
 - **Local data**: everything lives in a SQLite file on your Mac
@@ -73,7 +73,7 @@ The Timeline's **app lanes** show how you moved between apps across the day; eac
 1. Download the latest **MindfulHours DMG** from [Releases](https://github.com/VikalpP/MindfulHours/releases/latest) and drag MindfulHours to **Applications**.
 2. Releases aren't notarized yet, so macOS blocks the first launch: open the app once, then go to **System Settings › Privacy & Security** and click **Open Anyway**. (Or run `xattr -dr com.apple.quarantine /Applications/MindfulHours.app`.)
 3. Grant **Accessibility** (window titles) and **Screen Recording** (in-app context) when asked, then reopen the app. Allow **Automation** for each browser the first time it's in front, so the active tab's URL can be read.
-4. Optional: set up AI descriptions (below). Without it, minutes are still recorded from app, window title and URL.
+4. AI descriptions use Apple Intelligence on your Mac by default (macOS 26 or later, Apple silicon, Apple Intelligence turned on in System Settings). On other Macs, or to use another model, pick a provider (below). Without one, minutes are still recorded from app, window title and URL.
 
 Prefer building from source? See [CONTRIBUTING.md](CONTRIBUTING.md#development-setup).
 
@@ -85,7 +85,7 @@ Prefer building from source? See [CONTRIBUTING.md](CONTRIBUTING.md#development-s
 | Active tab URL (Safari, Chrome, Comet, Arc, Brave, Edge, Vivaldi, Opera) | AppleScript | every activity check |
 | Away detection | input idle time, screen lock, sleep; video/call apps holding a display-sleep assertion count as present | every activity check |
 | Screenshot of the focused window | ScreenCaptureKit, kept in memory only | every 25 s (configurable) |
-| "What are you doing in the app?" | the AI provider you pick in Settings | once per active minute |
+| "What are you doing in the app?" | Apple Intelligence on your Mac, or the AI provider you pick in Settings | once per active minute |
 
 macOS has no API for what happens inside an app, so each active minute MindfulHours sends the window metadata and (when allowed) a screenshot of the focused window to the model, which returns a specific summary, a task label, project and category. Consecutive minutes on the same task merge into blocks on the timeline.
 
@@ -110,7 +110,7 @@ Before every screenshot, MindfulHours checks these signals. Any hit means **no s
 - A page that was protected at any point in a minute never contributes a screenshot to that minute, and every capture is re-checked against the current window after it completes.
 - Screenshots wait until the on-device text scanner has loaded (up to ~30 s after a reboot), so none skip the scan.
 - Every skip is logged (reason and matched rule, never the content) under **Settings › Skipped screenshots**.
-- Data lives in `~/Library/Application Support/MindfulHours/activity.sqlite`. Screenshots are never written to disk. The only network traffic is to the AI provider you choose (and its sign-in page when you connect it); with Ollama or LM Studio nothing leaves your Mac.
+- Data lives in `~/Library/Application Support/MindfulHours/activity.sqlite`. Screenshots are never written to disk. The only network traffic is to the AI provider you choose (and its sign-in page when you connect it); with Apple Intelligence (the default), Ollama or LM Studio nothing leaves your Mac. With Apple Intelligence, data goes to another provider only if you pick one as its backup.
 
 Found a way around these protections? Please report it privately — see [SECURITY.md](SECURITY.md).
 
@@ -120,29 +120,22 @@ Pick a provider under **Settings › AI provider**, connect it, and choose a mod
 
 | Provider | How you connect | Cost |
 |---|---|---|
-| ChatGPT | **Sign in with ChatGPT** in your browser | counts toward your ChatGPT plan's usage |
-| OpenRouter | **Sign in with OpenRouter**; creates a key you can limit or revoke | pay per request on OpenRouter |
+| Apple Intelligence (default) | nothing; uses Apple's on-device model (macOS 26+, Apple silicon, Apple Intelligence turned on) | free, nothing leaves your Mac |
+| ChatGPT (preview) | **Sign in with ChatGPT** in your browser | counts toward your ChatGPT plan's usage |
+| Ollama, LM Studio | nothing; MindfulHours finds the server on this Mac | free, nothing leaves your Mac; the model stays loaded and uses several GB of RAM |
 | Claude, OpenAI API, Gemini | paste an API key (Settings links to where to create one) | pay per request |
-| Ollama, LM Studio | nothing; MindfulHours finds the server on this Mac | free, nothing leaves your Mac |
+| OpenRouter | **Sign in with OpenRouter**; creates a key you can limit or revoke | pay per request on OpenRouter |
 | Custom | any OpenAI-compatible **Base URL**, optional **API key** | depends on the endpoint |
 
-Keys and sign-ins are stored in your macOS Keychain. Small, fast models work best at one call per active minute (Claude Haiku, a GPT "mini" model, Gemini Flash, or a local vision model such as `gemma3`).
+**Apple Intelligence** reads screenshots on macOS 27 and later; on macOS 26 it describes minutes from the app, window title and URL only. macOS limits AI requests from background apps such as MindfulHours, especially on battery. When that happens, MindfulHours waits (1 minute, then up to 15) and records those minutes from metadata, or sends them to a **backup provider** you pick in Settings.
 
-**Advanced: route through [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI)** as a Custom endpoint, which runs locally and can front several subscriptions behind one URL:
-
-```sh
-curl -fsSLO https://raw.githubusercontent.com/VikalpP/MindfulHours/main/scripts/setup-proxy.sh
-less setup-proxy.sh   # review it first
-bash setup-proxy.sh   # installs cliproxyapi via Homebrew, signs in, sets MindfulHours to the Custom provider
-```
-
-It binds the proxy to `127.0.0.1`, generates a local API key, and picks `claude-haiku-5-5` (fast and cheap at one call per active minute).
+Keys and sign-ins are stored in your macOS Keychain. With a cloud provider, small, fast models work best at one call per active minute (Claude Haiku, a GPT "mini" model, Gemini Flash, or a local vision model such as `gemma3`). **Custom** is for an OpenAI-compatible endpoint you run or trust yourself, such as a self-hosted gateway; it receives the same data as any other provider.
 
 ## Using it
 
 - **Menu bar** — what you're doing now, today's active time and categories, recent blocks, pause for 15 min / 1 h / until resumed. A shield icon means the current window is protected.
 - **Timeline window** — app lanes showing how you moved between apps across the day, then every task block with its minute-level details and the apps used in it, plus time per app and category, **Summarize Day** and **Copy Markdown**.
-- **Settings** — AI provider (sign-in, API key or local) and model with connection test, screenshot and text-scan toggles, privacy rules, skipped-screenshot log, idle threshold, launch at login, delete all data.
+- **Settings** — AI provider (Apple Intelligence, sign-in, API key or local) and model with connection test, screenshot and text-scan toggles, privacy rules, skipped-screenshot log, idle threshold, launch at login, delete all data.
 
 ## Contributing
 

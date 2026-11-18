@@ -4,7 +4,7 @@ Thanks for helping! Bug reports, privacy-rule improvements, UI polish and new in
 
 ## Development setup
 
-Requirements: macOS 14+, Xcode 26+ (Swift 6 toolchain).
+Requirements: macOS 14+, Xcode 27+ (Swift 6.4 toolchain). Xcode 26 still builds, but without Apple Intelligence screenshot support; an SDK without FoundationModels builds without Apple Intelligence at all.
 
 ```sh
 git clone https://github.com/VikalpP/MindfulHours.git
@@ -18,17 +18,17 @@ scripts/build-app.sh --install   # builds, signs and launches /Applications/Mind
 
 ### AI descriptions (optional)
 
-The app works without AI: minutes are then recorded from app, window title and URL. To get AI descriptions, pick a provider in **Settings › AI provider**. For free local testing, install [Ollama](https://ollama.com) and `ollama pull gemma3`.
+The app works without AI: minutes are then recorded from app, window title and URL. On macOS 26+ with Apple Intelligence turned on, the default provider works with no setup. Otherwise pick a provider in **Settings › AI provider**; for free local testing, install [Ollama](https://ollama.com) and `ollama pull gemma3`.
 
 ## Project layout
 
 | Path | What lives there |
 |---|---|
-| `Sources/MindfulHoursCore` | Pure, testable logic: SQLite store, timeline grouping, privacy rules, sensitive-text detection, prompts and parsing, LLM client, provider presets and sign-in flows |
+| `Sources/MindfulHoursCore` | Pure, testable logic: SQLite store, timeline grouping, privacy rules, sensitive-text detection, prompts and parsing, LLM client, Apple Intelligence (on-device) and its fallback, provider presets and sign-in flows |
 | `Sources/MindfulHours/Tracking` | macOS integration: Accessibility, AppleScript, ScreenCaptureKit, Vision OCR, idle detection, the recording loop |
 | `Sources/MindfulHours/UI` | SwiftUI menu bar, timeline and settings |
 | `Tests/MindfulHoursCoreTests` | Swift Testing suites for the core |
-| `scripts/` | App bundling, release packaging, icon generation, proxy setup |
+| `scripts/` | App bundling, release packaging, icon generation, screenshots |
 
 To refresh the README screenshots (menu-bar popup, Timeline and Settings, in light and dark), install the app and run:
 
