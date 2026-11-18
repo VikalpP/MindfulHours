@@ -4,10 +4,10 @@ import MindfulHoursCore
 enum SettingsKey {
     static let aiEnabled = "aiEnabled"
     static let screenshotsEnabled = "screenshotsEnabled"
-    static let aiProvider = "aiProvider"
-    static let customBaseURL = "customBaseURL"
-    /// Read once at launch and moved to the Keychain; lets scripts/setup-proxy.sh hand over a key.
-    static let customAPIKeyHandoff = "customAPIKey"
+    static let aiProvider = ProviderSelection.providerKey
+    static let onDeviceBackupProvider = "onDeviceBackupProvider"
+    static let customBaseURL = ProviderSelection.customBaseURLKey
+    static let customAPIKeyHandoff = ProviderSelection.customAPIKeyHandoffKey
     static let chatGPTHostID = "chatGPTHostID"
     static let idleThresholdSeconds = "idleThresholdSeconds"
     static let sampleIntervalSeconds = "sampleIntervalSeconds"
@@ -18,13 +18,13 @@ enum SettingsKey {
     static let protectsPrivateWindows = "protectsPrivateWindows"
     static let scansScreenshotText = "scansScreenshotText"
 
-    static func model(for provider: AIProvider) -> String { "model.\(provider.rawValue)" }
+    static func model(for provider: AIProvider) -> String { ProviderSelection.modelKey(for: provider) }
 }
 
 enum SettingsDefault {
     static let aiEnabled = true
     static let screenshotsEnabled = true
-    static let aiProvider = AIProvider.chatGPT
+    static var aiProvider: AIProvider { ProviderSelection.defaultProvider(onDevice: AppleIntelligence.availability) }
     static let idleThresholdSeconds = 180.0
     static let sampleIntervalSeconds = 5.0
     static let screenshotIntervalSeconds = 25.0
@@ -48,6 +48,8 @@ struct AppSettings: Sendable {
     var screenshotsEnabled: Bool
     var provider: AIProvider
     var model: String
+    /// Used while Apple Intelligence is unavailable, busy or declines; nil records those minutes from metadata only.
+    var onDeviceBackup: (provider: AIProvider, model: String)?
     var customBaseURL: URL?
     var idleThreshold: TimeInterval
     var sampleInterval: TimeInterval
@@ -56,8 +58,8 @@ struct AppSettings: Sendable {
     var privacy: PrivacyRules
     var scansScreenshotText: Bool
 
+    /// Run after `ProviderSelection` migrations, which must see only persisted values.
     static func registerDefaults(in defaults: UserDefaults = .standard) {
-        migrateLegacyProxySettings(in: defaults)
         defaults.register(defaults: Dictionary(uniqueKeysWithValues: AIProvider.allCases.map { (SettingsKey.model(for: $0), $0.defaultModel) }))
         defaults.register(defaults: [
             SettingsKey.aiEnabled: SettingsDefault.aiEnabled,
@@ -76,13 +78,15 @@ struct AppSettings: Sendable {
 
     static func load(from defaults: UserDefaults = .standard) -> AppSettings {
         let provider = defaults.string(forKey: SettingsKey.aiProvider).flatMap(AIProvider.init(rawValue:)) ?? SettingsDefault.aiProvider
+        let backup = defaults.string(forKey: SettingsKey.onDeviceBackupProvider).flatMap(AIProvider.init(rawValue:)).flatMap { $0.isOnDevice ? nil : $0 }
         let customBaseURL = defaults.string(forKey: SettingsKey.customBaseURL)?.trimmingCharacters(in: .whitespaces)
         let sampleInterval = min(max(defaults.double(forKey: SettingsKey.sampleIntervalSeconds), 1), 60)
         return AppSettings(
             aiEnabled: defaults.bool(forKey: SettingsKey.aiEnabled),
             screenshotsEnabled: defaults.bool(forKey: SettingsKey.screenshotsEnabled),
             provider: provider,
-            model: defaults.string(forKey: SettingsKey.model(for: provider))?.trimmingCharacters(in: .whitespaces) ?? "",
+            model: model(for: provider, in: defaults),
+            onDeviceBackup: backup.map { ($0, model(for: $0, in: defaults)) },
             customBaseURL: customBaseURL.flatMap { $0.isEmpty ? nil : URL(string: $0) },
             idleThreshold: defaults.double(forKey: SettingsKey.idleThresholdSeconds),
             sampleInterval: sampleInterval,
@@ -97,15 +101,16 @@ struct AppSettings: Sendable {
         )
     }
 
-    /// Settings from before provider presets pointed at a CLIProxyAPI-style endpoint; they become the Custom provider.
-    /// v0.1.0 persisted only the values the user changed, so missing ones take its defaults.
-    private static func migrateLegacyProxySettings(in defaults: UserDefaults) {
-        let legacyKeys = ["proxyBaseURL", "model", "proxyAPIKey"]
-        guard legacyKeys.contains(where: { defaults.object(forKey: $0) != nil }) else { return }
-        defaults.set(AIProvider.custom.rawValue, forKey: SettingsKey.aiProvider)
-        defaults.set(defaults.string(forKey: "proxyBaseURL") ?? "http://127.0.0.1:8317/v1", forKey: SettingsKey.customBaseURL)
-        defaults.set(defaults.string(forKey: "model") ?? "claude-haiku-5-5", forKey: SettingsKey.model(for: .custom))
-        if let key = defaults.string(forKey: "proxyAPIKey"), !key.isEmpty { defaults.set(key, forKey: SettingsKey.customAPIKeyHandoff) }
-        for key in legacyKeys { defaults.removeObject(forKey: key) }
+    static func model(for provider: AIProvider, in defaults: UserDefaults = .standard) -> String {
+        defaults.string(forKey: SettingsKey.model(for: provider))?.trimmingCharacters(in: .whitespaces) ?? ""
+    }
+
+    /// The same settings pointed at the backup provider, for minutes and summaries Apple Intelligence can't handle.
+    var onDeviceBackupSettings: AppSettings? {
+        guard provider.isOnDevice, let onDeviceBackup else { return nil }
+        var settings = self
+        settings.provider = onDeviceBackup.provider
+        settings.model = onDeviceBackup.model
+        return settings
     }
 }

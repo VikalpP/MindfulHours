@@ -74,6 +74,7 @@ struct MenuBarView: View {
         case .disabled: Label("AI off", systemImage: "sparkles").foregroundStyle(.secondary)
         case .ready: Label("AI", systemImage: "sparkles").foregroundStyle(.tint)
         case .analyzing: Label("Analyzing", systemImage: "sparkles").foregroundStyle(.tint)
+        case .waiting(let message): Label("AI waiting", systemImage: "hourglass").foregroundStyle(.orange).help(message)
         case .failed(let message): Label("AI error", systemImage: "exclamationmark.triangle").foregroundStyle(.red).help(message)
         }
     }

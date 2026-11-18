@@ -35,13 +35,16 @@ final class AppModel: ObservableObject {
     @Published private(set) var permissions = PermissionState.current
 
     init() {
+        ProviderSelection.migrateLegacyProxySettings(in: .standard)
+        let accounts = ProviderAccounts()
+        ProviderSelection.keepChatGPTIfInUse(in: .standard, hasChatGPTSession: accounts.account(for: .chatGPT) != nil)
         AppSettings.registerDefaults()
         do {
             store = try ActivityStore()
         } catch {
             fatalError("MindfulHours cannot open its database at \(ActivityStore.defaultURL.path): \(error)")
         }
-        accounts = ProviderAccounts()
+        self.accounts = accounts
         recorder = ActivityRecorder(store: store, accounts: accounts)
     }
 
@@ -88,15 +91,30 @@ final class AppModel: ObservableObject {
     }
 
     func summarize(_ activity: DayActivity) async throws -> DaySummary {
-        let llm = try await accounts.configuration(for: AppSettings.load())
-        let text = try await LLMClient(configuration: llm).complete(
+        let settings = AppSettings.load()
+        let text: String
+        if settings.provider.isOnDevice {
+            do {
+                text = try await AppleIntelligence.summarizeDay(day: activity.dayKey, blocks: activity.blocks, appUsage: activity.appUsage)
+            } catch let error as OnDeviceModelError {
+                guard let backup = settings.onDeviceBackupSettings, accounts.isReady(backup) else { throw error }
+                text = try await summarizeOverHTTP(activity, settings: backup)
+            }
+        } else {
+            text = try await summarizeOverHTTP(activity, settings: settings)
+        }
+        let summary = DaySummary(day: activity.dayKey, text: text, createdAt: .now)
+        try await store.saveDaySummary(summary)
+        return summary
+    }
+
+    private func summarizeOverHTTP(_ activity: DayActivity, settings: AppSettings) async throws -> String {
+        let llm = try await accounts.configuration(for: settings)
+        return try await LLMClient(configuration: llm).complete(
             system: Prompts.daySystem,
             user: Prompts.dayUser(day: activity.dayKey, blocks: activity.blocks, appUsage: activity.appUsage),
             maxTokens: 4000
         )
-        let summary = DaySummary(day: activity.dayKey, text: text, createdAt: .now)
-        try await store.saveDaySummary(summary)
-        return summary
     }
 
     var launchesAtLogin: Bool {

@@ -56,6 +56,7 @@ final class ProviderAccounts: ObservableObject {
     /// Changes whenever the credentials that reach `provider` change, so model lists know to reload.
     func accessIdentity(for provider: AIProvider, customBaseURL: URL?) -> String {
         switch provider.access {
+        case .onDevice: provider.rawValue
         case .signIn: account(for: provider) ?? ""
         case .apiKey: apiKey(for: provider)
         case .localServer: provider.rawValue
@@ -65,6 +66,7 @@ final class ProviderAccounts: ObservableObject {
 
     func canConnect(to provider: AIProvider, customBaseURL: URL?) -> Bool {
         switch provider.access {
+        case .onDevice: AppleIntelligence.availability.isAvailable
         case .signIn: account(for: provider) != nil
         case .apiKey: !apiKey(for: provider).isEmpty
         case .localServer: true
@@ -73,11 +75,15 @@ final class ProviderAccounts: ObservableObject {
     }
 
     func isReady(_ settings: AppSettings) -> Bool {
-        !settings.model.isEmpty && canConnect(to: settings.provider, customBaseURL: settings.customBaseURL)
+        if settings.provider.isOnDevice {
+            return AppleIntelligence.availability.isAvailable || settings.onDeviceBackupSettings.map(isReady) == true
+        }
+        return !settings.model.isEmpty && canConnect(to: settings.provider, customBaseURL: settings.customBaseURL)
     }
 
+    /// For providers reached over HTTP; the on-device model has no configuration.
     func configuration(for settings: AppSettings) async throws -> LLMConfiguration {
-        guard isReady(settings) else { throw LLMError.notConfigured }
+        guard !settings.provider.isOnDevice, isReady(settings) else { throw LLMError.notConfigured }
         return try await connection(to: settings.provider, model: settings.model, customBaseURL: settings.customBaseURL)
     }
 

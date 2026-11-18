@@ -12,6 +12,8 @@ enum AnalysisStatus: Equatable {
     case disabled
     case ready
     case analyzing
+    /// Apple Intelligence couldn't answer and there is no backup provider; minutes are recorded from metadata.
+    case waiting(String)
     case failed(String)
 }
 
@@ -35,6 +37,7 @@ final class ActivityRecorder: ObservableObject {
     private let accounts: ProviderAccounts
     private let probe = ContextProbe()
     private let presence = PresenceMonitor()
+    private let onDeviceRouter = OnDeviceFirstRouter()
 
     private var minuteStart = Date.now.flooredToMinute
     private var minute = MinuteAccumulator()
@@ -280,30 +283,39 @@ final class ActivityRecorder: ObservableObject {
         defer { isAnalyzing = false }
 
         do {
-            let llm = try await accounts.configuration(for: settings)
-            let reply = try await LLMClient(configuration: llm).complete(
-                system: Prompts.minuteSystem,
-                user: Prompts.minuteUser(observation),
-                imageJPEG: snapshot?.jpeg,
-                reasoningEffort: "none"
-            )
-            guard let payload = Prompts.parseInsight(reply) else {
-                throw LLMError.unparseableReply(reply)
+            switch try await outcome(for: observation, screenshotJPEG: snapshot?.jpeg, settings: settings) {
+            case .described(let description):
+                let payload = description.payload
+                let insight = Insight(
+                    minuteStart: minute, context: context, summary: payload.summary, task: payload.task,
+                    project: payload.project, category: payload.category, isReused: false, model: description.model
+                )
+                lastAnalyzed = (context.continuityKey, snapshot?.fingerprint, insight, Date.now)
+                consecutiveFailures = 0
+                analysisStatus = .ready
+                await save(insight)
+            case .metadataOnly(let reason):
+                analysisStatus = .waiting(reason)
+                await save(.fromMetadata(minuteStart: minute, context: context, previous: recent.last))
             }
-            let insight = Insight(
-                minuteStart: minute, context: context, summary: payload.summary, task: payload.task,
-                project: payload.project, category: payload.category, isReused: false, model: llm.model
-            )
-            lastAnalyzed = (context.continuityKey, snapshot?.fingerprint, insight, Date.now)
-            consecutiveFailures = 0
-            analysisStatus = .ready
-            await save(insight)
         } catch {
             consecutiveFailures += 1
             retryAfter = Date.now.addingTimeInterval(min(60 * pow(2, Double(consecutiveFailures - 1)), 15 * 60))
             analysisStatus = .failed(error.localizedDescription)
             await save(.fromMetadata(minuteStart: minute, context: context, previous: recent.last))
         }
+    }
+
+    private func outcome(for observation: MinuteObservation, screenshotJPEG: Data?, settings: AppSettings) async throws -> MinuteOutcome {
+        guard settings.provider.isOnDevice else {
+            let client = LLMClient(configuration: try await accounts.configuration(for: settings))
+            return .described(try await LLMMinuteDescriber(client: client).describe(observation, screenshotJPEG: screenshotJPEG))
+        }
+        var backup: LLMMinuteDescriber?
+        if let backupSettings = settings.onDeviceBackupSettings, accounts.isReady(backupSettings) {
+            backup = LLMMinuteDescriber(client: LLMClient(configuration: try await accounts.configuration(for: backupSettings)))
+        }
+        return try await onDeviceRouter.describe(observation, screenshotJPEG: screenshotJPEG, onDevice: AppleIntelligence.minuteDescriber(), backup: backup)
     }
 
     private func isUnchanged(

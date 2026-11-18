@@ -5,6 +5,7 @@ struct AIProviderSection: View {
     @ObservedObject var accounts: ProviderAccounts
     @AppStorage(SettingsKey.aiProvider) private var provider = SettingsDefault.aiProvider
     @AppStorage(SettingsKey.customBaseURL) private var customBaseURL = ""
+    @AppStorage(SettingsKey.onDeviceBackupProvider) private var onDeviceBackupProvider = ""
     @State private var connectionResult: Result<String, Error>?
     @State private var isTesting = false
 
@@ -13,9 +14,14 @@ struct AIProviderSection: View {
             Picker("Provider", selection: $provider) {
                 ForEach(AIProvider.allCases) { Text($0.pickerLabel).tag($0) }
             }
-            access
-            ModelField(provider: provider, accounts: accounts, customBaseURL: parsedCustomBaseURL)
-                .id(provider)
+            if provider.isOnDevice {
+                AppleIntelligenceStatus()
+                onDeviceBackupPicker
+            } else {
+                access
+                ModelField(provider: provider, accounts: accounts, customBaseURL: parsedCustomBaseURL)
+                    .id(provider)
+            }
             HStack {
                 Button("Test Connection") { testConnection() }.disabled(isTesting)
                 if isTesting { ProgressView().controlSize(.small) }
@@ -24,14 +30,36 @@ struct AIProviderSection: View {
         } header: {
             Text("AI provider")
         } footer: {
-            Text(LocalizedStringKey("\(provider.settingsNote) Screenshots need a model that accepts images."))
+            Text(LocalizedStringKey(provider.isOnDevice ? provider.settingsNote : "\(provider.settingsNote) Screenshots need a model that accepts images."))
                 .font(.caption).foregroundStyle(.secondary)
         }
         .onChange(of: provider) { connectionResult = nil }
     }
 
+    private var onDeviceBackupPicker: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Picker("When it's unavailable or busy", selection: $onDeviceBackupProvider) {
+                Text("Record app and title only").tag("")
+                ForEach(backupChoices) { Text($0.displayName).tag($0.rawValue) }
+            }
+            Text("macOS limits AI requests from background apps, especially on battery. A backup provider gets those minutes instead, including screenshots. Set one up by choosing it above first.")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    /// Providers that are already set up, plus the current choice so the picker never loses its selection.
+    private var backupChoices: [AIProvider] {
+        AIProvider.allCases.filter { candidate in
+            guard !candidate.isOnDevice else { return false }
+            let isSetUp = accounts.canConnect(to: candidate, customBaseURL: parsedCustomBaseURL) && !AppSettings.model(for: candidate).isEmpty
+            return isSetUp || candidate.rawValue == onDeviceBackupProvider
+        }
+    }
+
     @ViewBuilder private var access: some View {
         switch provider.access {
+        case .onDevice:
+            EmptyView()
         case .signIn:
             if let account = accounts.account(for: provider) {
                 LabeledContent("Signed in") {
@@ -59,7 +87,7 @@ struct AIProviderSection: View {
         case .localServer:
             EmptyView()
         case .customEndpoint:
-            TextField("Base URL", text: $customBaseURL, prompt: Text("http://127.0.0.1:8317/v1"))
+            TextField("Base URL", text: $customBaseURL, prompt: Text("http://127.0.0.1:8080/v1"))
             SecureField("API key", text: apiKey(for: .custom), prompt: Text("Optional"))
         }
     }
@@ -87,11 +115,42 @@ struct AIProviderSection: View {
         Task {
             defer { isTesting = false }
             do {
+                guard !provider.isOnDevice else {
+                    let reply = try await AppleIntelligence.reply(system: "Reply with exactly: ok", user: "ping")
+                    let screenshots = (try? await AppleIntelligence.supportsScreenshots()) == true ? "reads screenshots" : "text only on this macOS"
+                    connectionResult = .success("Apple Intelligence replied “\(reply.prefix(20))”, \(screenshots)")
+                    return
+                }
                 let llm = try await accounts.configuration(for: AppSettings.load())
                 let reply = try await LLMClient(configuration: llm).complete(system: "Reply with exactly: ok", user: "ping", maxTokens: 64, reasoningEffort: "none")
                 connectionResult = .success("\(llm.model) replied “\(reply.prefix(20))”")
             } catch {
                 connectionResult = .failure(error)
+            }
+        }
+    }
+}
+
+private struct AppleIntelligenceStatus: View {
+    @State private var availability = AppleIntelligence.availability
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Label(availability.explanation, systemImage: availability.isAvailable ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                    .foregroundStyle(availability.isAvailable ? .green : .orange)
+                Spacer()
+                if !availability.isAvailable {
+                    Button("Check Again") { availability = AppleIntelligence.availability }
+                }
+            }
+            if let fixHint = availability.fixHint {
+                Text(fixHint).font(.callout).foregroundStyle(.secondary)
+            }
+            if availability == .unavailable(.appleIntelligenceNotEnabled) {
+                Button("Open Apple Intelligence Settings") {
+                    NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.Siri-Settings.extension")!)
+                }
             }
         }
     }
@@ -174,24 +233,26 @@ private struct ModelField: View {
 private extension AIProvider {
     var pickerLabel: String {
         switch self {
-        case .chatGPT: "ChatGPT — sign in with your plan"
+        case .appleIntelligence: "Apple Intelligence (on-device, private)"
+        case .chatGPT: "ChatGPT — sign in with your plan (preview)"
         case .openRouter: "OpenRouter — sign in"
         case .claude, .openAI, .gemini: "\(displayName) — API key"
-        case .ollama, .lmStudio: "\(displayName) — on this Mac"
+        case .ollama, .lmStudio: "\(displayName) — local model on this Mac"
         case .custom: "Custom OpenAI-compatible endpoint"
         }
     }
 
     var settingsNote: String {
         switch self {
-        case .chatGPT: "Requests count toward your ChatGPT plan's usage; no API key needed."
+        case .appleIntelligence: "Runs on this Mac with Apple's on-device model; nothing is sent anywhere. Needs macOS 26 or later on Apple silicon with Apple Intelligence turned on; reading screenshots needs macOS 27."
+        case .chatGPT: "Preview: uses Sign in with ChatGPT, which OpenAI may change. Requests count toward your ChatGPT plan's usage; no API key needed."
         case .claude: "Billed per request to your Claude Console account. Claude subscriptions can't be used by other apps."
         case .openAI: "Billed per request to your OpenAI platform account; a ChatGPT subscription doesn't cover it."
         case .openRouter: "Signing in creates an OpenRouter key for MindfulHours, which you can limit or revoke on openrouter.ai."
         case .gemini: "Uses a Google AI Studio API key."
-        case .ollama: "Runs entirely on this Mac. For screenshots, pull a vision model, e.g. `ollama pull gemma3`."
-        case .lmStudio: "Runs entirely on this Mac. Start the server in LM Studio's Developer tab and load a vision model."
-        case .custom: "Any OpenAI-compatible endpoint, such as a self-hosted gateway or CLIProxyAPI (scripts/setup-proxy.sh)."
+        case .ollama: "Runs entirely on this Mac. A call every active minute keeps the model loaded, using several GB of RAM. For screenshots, pull a vision model, e.g. `ollama pull gemma3`."
+        case .lmStudio: "Runs entirely on this Mac. The loaded model stays in memory, using several GB of RAM. Start the server in LM Studio's Developer tab and load a vision model."
+        case .custom: "Any OpenAI-compatible endpoint you run or trust, such as a self-hosted gateway. It receives the same data as any other provider."
         }
     }
 }
