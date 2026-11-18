@@ -98,12 +98,14 @@ struct AppSettings: Sendable {
     }
 
     /// Settings from before provider presets pointed at a CLIProxyAPI-style endpoint; they become the Custom provider.
+    /// v0.1.0 persisted only the values the user changed, so missing ones take its defaults.
     private static func migrateLegacyProxySettings(in defaults: UserDefaults) {
-        guard let legacyBaseURL = defaults.string(forKey: "proxyBaseURL") else { return }
+        let legacyKeys = ["proxyBaseURL", "model", "proxyAPIKey"]
+        guard legacyKeys.contains(where: { defaults.object(forKey: $0) != nil }) else { return }
         defaults.set(AIProvider.custom.rawValue, forKey: SettingsKey.aiProvider)
-        defaults.set(legacyBaseURL, forKey: SettingsKey.customBaseURL)
-        if let model = defaults.string(forKey: "model") { defaults.set(model, forKey: SettingsKey.model(for: .custom)) }
-        if let key = defaults.string(forKey: "proxyAPIKey") { defaults.set(key, forKey: SettingsKey.customAPIKeyHandoff) }
-        for key in ["proxyBaseURL", "model", "proxyAPIKey"] { defaults.removeObject(forKey: key) }
+        defaults.set(defaults.string(forKey: "proxyBaseURL") ?? "http://127.0.0.1:8317/v1", forKey: SettingsKey.customBaseURL)
+        defaults.set(defaults.string(forKey: "model") ?? "claude-haiku-5-5", forKey: SettingsKey.model(for: .custom))
+        if let key = defaults.string(forKey: "proxyAPIKey"), !key.isEmpty { defaults.set(key, forKey: SettingsKey.customAPIKeyHandoff) }
+        for key in legacyKeys { defaults.removeObject(forKey: key) }
     }
 }

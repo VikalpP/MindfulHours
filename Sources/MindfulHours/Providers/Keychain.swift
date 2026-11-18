@@ -4,19 +4,28 @@ import Security
 enum Keychain {
     private static let service = Bundle.main.bundleIdentifier ?? "com.vikalppanseriya.MindfulHours"
 
-    static func read(account: String) -> Data? {
+    struct Failure: Error {
+        let status: OSStatus
+    }
+
+    /// Nil when there is no item; throws when one may exist but can't be read (e.g. access was denied).
+    static func read(account: String) throws -> Data? {
         var item: CFTypeRef?
         let status = SecItemCopyMatching(query(account: account).merging([
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne,
         ]) { $1 } as CFDictionary, &item)
-        if status != errSecSuccess && status != errSecItemNotFound {
+        switch status {
+        case errSecSuccess: return item as? Data
+        case errSecItemNotFound: return nil
+        default:
             NSLog("MindfulHours: keychain read failed: \(status)")
+            throw Failure(status: status)
         }
-        return item as? Data
     }
 
-    static func write(_ data: Data, account: String) {
+    @discardableResult
+    static func write(_ data: Data, account: String) -> Bool {
         let update = [kSecValueData as String: data] as CFDictionary
         var status = SecItemUpdate(query(account: account) as CFDictionary, update)
         if status == errSecItemNotFound {
@@ -28,6 +37,7 @@ enum Keychain {
         if status != errSecSuccess {
             NSLog("MindfulHours: keychain write failed: \(status)")
         }
+        return status == errSecSuccess
     }
 
     static func delete(account: String) {

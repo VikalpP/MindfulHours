@@ -12,16 +12,25 @@ final class ProviderAccounts: ObservableObject {
     private static let keychainAccount = "provider-credentials"
 
     @Published private var credentials: Credentials
+    /// False when the stored item exists but couldn't be read; saving would then overwrite every other credential.
+    private let canSave: Bool
     @Published private(set) var signingIn: AIProvider?
     @Published private(set) var signInError: (provider: AIProvider, message: String)?
     private var signInTask: Task<Void, Never>?
     private var chatGPTRefresh: Task<ChatGPTSession, Error>?
 
     init(defaults: UserDefaults = .standard) {
-        credentials = Keychain.read(account: Self.keychainAccount).flatMap { try? JSONDecoder().decode(Credentials.self, from: $0) } ?? Credentials()
+        do {
+            let stored = try Keychain.read(account: Self.keychainAccount)
+            credentials = stored.flatMap { try? JSONDecoder().decode(Credentials.self, from: $0) } ?? Credentials()
+            canSave = true
+        } catch {
+            credentials = Credentials()
+            canSave = false
+        }
         if let handedOverKey = defaults.string(forKey: SettingsKey.customAPIKeyHandoff) {
-            setAPIKey(handedOverKey, for: .custom)
-            defaults.removeObject(forKey: SettingsKey.customAPIKeyHandoff)
+            credentials.apiKeys[AIProvider.custom.rawValue] = handedOverKey.trimmingCharacters(in: .whitespacesAndNewlines)
+            if save() { defaults.removeObject(forKey: SettingsKey.customAPIKeyHandoff) }
         }
     }
 
@@ -152,16 +161,19 @@ final class ProviderAccounts: ObservableObject {
                 save()
             }
             return refreshed
-        } catch SignInError.http(let status, _) where (400..<500).contains(status) {
-            credentials.chatGPT = nil
-            save()
+        } catch SignInError.http(let status, _) where [400, 401].contains(status) {
+            if credentials.chatGPT == session {
+                credentials.chatGPT = nil
+                save()
+            }
             throw LLMError.failed("ChatGPT sign-in expired; sign in again in Settings")
         }
     }
 
-    private func save() {
-        guard let data = try? JSONEncoder().encode(credentials) else { return }
-        Keychain.write(data, account: Self.keychainAccount)
+    @discardableResult
+    private func save() -> Bool {
+        guard canSave, let data = try? JSONEncoder().encode(credentials) else { return false }
+        return Keychain.write(data, account: Self.keychainAccount)
     }
 
     /// Stable per Mac, as Sign in with ChatGPT requires; not a secret.
