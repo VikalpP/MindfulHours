@@ -1,71 +1,20 @@
-// Renders the app icon and README/social branding. Run from the repo root: swift scripts/make-brand-assets.swift
+// Builds the app icon set and README/social branding from Resources/AppIcon.png. Run from the repo root: swift scripts/make-brand-assets.swift
 import AppKit
 import SwiftUI
 
-struct AppIcon: View {
-    private let canvas: CGFloat = 1024
-    private let squircleSize: CGFloat = 824
-    private let dialRadius: CGFloat = 238
-    private let lineWidth: CGFloat = 70
-    private let elapsedFraction = 0.72
-
-    var body: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 185, style: .continuous)
-                .fill(LinearGradient(
-                    colors: [Color(red: 0.49, green: 0.47, blue: 0.98), Color(red: 0.27, green: 0.24, blue: 0.80)],
-                    startPoint: .top, endPoint: .bottom
-                ))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 185, style: .continuous)
-                        .fill(RadialGradient(
-                            colors: [.white.opacity(0.28), .clear],
-                            center: UnitPoint(x: 0.3, y: 0.08), startRadius: 0, endRadius: 620
-                        ))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 185, style: .continuous)
-                        .strokeBorder(.white.opacity(0.16), lineWidth: 3)
-                )
-                .frame(width: squircleSize, height: squircleSize)
-                .shadow(color: .black.opacity(0.28), radius: 18, y: 10)
-
-            dial
-        }
-        .frame(width: canvas, height: canvas)
-    }
-
-    private var dial: some View {
-        let endAngle = Angle.degrees(-90 + 360 * elapsedFraction)
-        return ZStack {
-            Circle()
-                .stroke(.white.opacity(0.18), lineWidth: lineWidth)
-            Circle()
-                .trim(from: 0, to: elapsedFraction)
-                .stroke(
-                    AngularGradient(
-                        colors: [.white.opacity(0.55), .white],
-                        center: .center, startAngle: .degrees(0), endAngle: .degrees(360 * elapsedFraction)
-                    ),
-                    style: StrokeStyle(lineWidth: lineWidth, lineCap: .round)
-                )
-                .rotationEffect(.degrees(-90))
-            Circle()
-                .fill(Color(red: 1.0, green: 0.84, blue: 0.55))
-                .frame(width: lineWidth * 0.52, height: lineWidth * 0.52)
-                .shadow(color: Color(red: 1.0, green: 0.8, blue: 0.5).opacity(0.9), radius: 14)
-                .offset(x: dialRadius * cos(endAngle.radians), y: dialRadius * sin(endAngle.radians))
-        }
-        .frame(width: dialRadius * 2, height: dialRadius * 2)
-        .shadow(color: .black.opacity(0.18), radius: 10, y: 6)
-    }
+let iconMasterPath = "Resources/AppIcon.png"
+guard let iconMaster = NSImage(contentsOfFile: iconMasterPath),
+      let icon = iconMaster.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
+    fatalError("Missing \(iconMasterPath): the 1024×1024 app icon master")
 }
 
 struct SocialPreview: View {
+    let icon: NSImage
+
     var body: some View {
         HStack(spacing: 44) {
-            AppIcon()
-                .scaleEffect(0.38)
+            Image(nsImage: icon)
+                .resizable()
                 .frame(width: 390, height: 390)
             VStack(alignment: .leading, spacing: 18) {
                 Text("MindfulHours")
@@ -113,7 +62,7 @@ func png(_ image: CGImage, width: Int, height: Int) -> Data {
     return rep.representation(using: .png, properties: [:])!
 }
 
-let (icon, socialPreview) = MainActor.assumeIsolated { (render(AppIcon()), render(SocialPreview())) }
+let socialPreview = MainActor.assumeIsolated { render(SocialPreview(icon: iconMaster)) }
 
 let iconset = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("AppIcon-\(UUID()).iconset")
 try FileManager.default.createDirectory(at: iconset, withIntermediateDirectories: true)
