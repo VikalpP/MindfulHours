@@ -4,7 +4,7 @@ Thanks for helping! Bug reports, privacy-rule improvements, UI polish and new in
 
 ## Development setup
 
-Requirements: macOS 14+, Xcode 27+ (Swift 6.4 toolchain). Xcode 26 still builds, but without Apple Intelligence screenshot support; an SDK without FoundationModels builds without Apple Intelligence at all.
+Requirements: macOS 14+ to run, Xcode 27+ (Swift 6.4 toolchain, macOS 27 SDK) to build; CI enforces it. To exercise the real on-device model, run `MINDFULHOURS_LIVE_AI=1 swift test --filter LiveAppleIntelligence` on a Mac with Apple Intelligence turned on.
 
 ```sh
 git clone https://github.com/VikalpP/MindfulHours.git
