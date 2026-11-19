@@ -71,7 +71,7 @@ The Timeline's **app lanes** show how you moved between apps across the day; eac
 ## Install
 
 1. Download the latest **MindfulHours DMG** from [Releases](https://github.com/VikalpP/MindfulHours/releases/latest) and drag MindfulHours to **Applications**.
-2. Releases aren't notarized yet, so macOS blocks the first launch: open the app once, then go to **System Settings › Privacy & Security** and click **Open Anyway**. (Or run `xattr -dr com.apple.quarantine /Applications/MindfulHours.app`.)
+2. Open MindfulHours. Releases are signed with Developer ID and notarized by Apple, so macOS opens them normally.
 3. Grant **Accessibility** (window titles) and **Screen Recording** (in-app context) when asked, then reopen the app. Allow **Automation** for each browser the first time it's in front, so the active tab's URL can be read.
 4. AI descriptions use Apple Intelligence on your Mac by default (macOS 26 or later, Apple silicon, Apple Intelligence turned on in System Settings). On other Macs, or to use another model, pick a provider (below). Without one, minutes are still recorded from app, window title and URL.
 

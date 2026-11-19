@@ -64,24 +64,20 @@ The app icon, the README header icon and the GitHub social preview are drawn in 
 
 ### Releasing
 
+Releases are built, signed and notarized on the maintainer's Mac, not in CI. Write the release notes to `RELEASE_NOTES.md` (untracked), then:
+
 ```sh
-git tag v1.2.0
-git push origin v1.2.0
+scripts/release.sh 1.2.0             # build into dist/1.2.0/ and print the publish commands
+scripts/release.sh 1.2.0 --publish   # same, then tag, push the tag and create the GitHub Release (on main only)
 ```
 
-The **Release** workflow tests, builds a universal (Apple Silicon + Intel) app stamped with the tag's version, packages a DMG, zip and `SHA256SUMS.txt`, and publishes a GitHub Release with generated notes. Tags with a suffix (`v1.2.0-beta.1`) are published as pre-releases.
+The script requires a clean tree and a new version, runs the tests, builds a universal (Apple Silicon + Intel) app stamped with the version, signs it with Developer ID (hardened runtime, secure timestamp), notarizes and staples the app, then packages, signs, notarizes and staples the DMG, and writes the zip and `SHA256SUMS.txt` next to it. Versions with a suffix (`1.2.0-beta.1`) are published as pre-releases.
 
-### Enabling signing and notarization
+One-time setup on the release Mac:
 
-Releases are ad-hoc signed until these repository secrets exist; then they are signed with Developer ID, notarized and stapled automatically:
-
-| Secret | Value |
-|---|---|
-| `DEVELOPER_ID_P12_BASE64` | `base64 -i DeveloperID.p12` of your *Developer ID Application* certificate + key |
-| `DEVELOPER_ID_P12_PASSWORD` | Password of that `.p12` |
-| `APPLE_ID` | Apple ID email of the developer account |
-| `APPLE_TEAM_ID` | 10-character team ID |
-| `APPLE_APP_SPECIFIC_PASSWORD` | App-specific password from appleid.apple.com |
+- A **Developer ID Application** certificate and its private key in the login keychain (the script picks it up; set `CODESIGN_IDENTITY` if there are several).
+- A notarytool Keychain profile named `mindfulhours-notary`, created from an App Store Connect API key: `xcrun notarytool store-credentials mindfulhours-notary --key <AuthKey.p8> --key-id <key ID> --issuer <issuer ID>`. Set `NOTARY_PROFILE` to use another name.
+- Xcode 27 or later and the `gh` CLI, signed in.
 
 ### Repository settings checklist
 
